@@ -167,11 +167,3 @@ NUNCA commite nem suba para o GitHub os seguintes itens:
   - credentials.json (contém chave de acesso à nuvem do Google)
   - .wwebjs_auth/ (contém a sessão ativa de login do WhatsApp)
 
-Comandos para subir no GitHub com segurança:
-  git init
-  git add .
-  git commit -m "feat: bot de agendamento de guincho integrado com sheets e gemini"
-  git branch -M main
-  git remote add origin https://github.com/SEU_USUARIO/SEU_REPOSITORIO.git
-  git push -u origin main
-================================================================================
