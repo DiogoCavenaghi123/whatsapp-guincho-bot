@@ -1,0 +1,29 @@
+{
+  "name": "whatsapp-guincho-bot",
+  "version": "1.0.0",
+  "description": "Bot que lê agendamentos de guincho no WhatsApp e preenche Google Sheets automaticamente",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "groups": "node src/list-groups.js"
+  },
+  "keywords": [
+    "whatsapp",
+    "bot",
+    "google-sheets",
+    "guincho",
+    "agendamento"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@google/genai": "^2.22.0",
+    "dotenv": "^16.4.7",
+    "googleapis": "^144.0.0",
+    "qrcode-terminal": "^0.12.0",
+    "whatsapp-web.js": "^1.26.1"
+  },
+  "allowScripts": {
+    "puppeteer@24.38.0": true
+  }
+}

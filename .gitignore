@@ -1,0 +1,25 @@
+# Dependências
+node_modules/
+
+# Variáveis de ambiente e credenciais
+.env
+credentials.json
+*.pem
+*.key
+
+# Sessões e caches do WhatsApp/Puppeteer
+.wwebjs_auth/
+.wwebjs_cache/
+.local-chromium/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.log
+
+# Arquivos de sistema
+.DS_Store
+Thumbs.db
+
+
