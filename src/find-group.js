@@ -3,14 +3,41 @@
 // =============================================================
 
 const { Client, LocalAuth } = require('whatsapp-web.js');
+const qrcode = require('qrcode-terminal');
 const logger = require('./logger');
 
 const client = new Client({
   authStrategy: new LocalAuth(),
   puppeteer: {
     headless: true,
-    args: ['--no-sandbox', '--disable-setuid-sandbox'],
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--disable-accelerated-2d-canvas',
+      '--no-first-run',
+      '--disable-gpu',
+    ],
   },
+});
+
+// ── Carregando WhatsApp ────────────────────────────────────
+client.on('loading_screen', (percent, message) => {
+  logger.info(`Carregando WhatsApp: ${percent}%...`);
+});
+
+// ── QR Code ────────────────────────────────────────────────
+client.on('qr', (qr) => {
+  logger.info('Escaneie o QR Code abaixo com o WhatsApp:');
+  console.log('');
+  qrcode.generate(qr, { small: true });
+  console.log('');
+  logger.info('Abra o WhatsApp → Menu (⋮) → Aparelhos conectados → Conectar um aparelho');
+});
+
+// ── Autenticação ───────────────────────────────────────────
+client.on('authenticated', () => {
+  logger.success('WhatsApp autenticado! Carregando conversas...');
 });
 
 client.on('ready', () => {
@@ -18,7 +45,7 @@ client.on('ready', () => {
   console.log('');
   console.log('══════════════════════════════════════════════════════════');
   console.log('  AGORA: Abra o WhatsApp no celular, vá no grupo');
-  console.log('  "Agenda guincho" e envie exatamente a palavra:');
+  console.log('  e envie exatamente a palavra:');
   console.log('');
   console.log('  👉  guincho');
   console.log('');

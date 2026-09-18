@@ -5,7 +5,11 @@
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
-    "groups": "node src/list-groups.js"
+    "start:bg": "node src/start-bg.js",
+    "stop": "node src/stop.js",
+    "status": "node src/status.js",
+    "groups": "node src/list-groups.js",
+    "find-group": "node src/find-group.js"
   },
   "keywords": [
     "whatsapp",

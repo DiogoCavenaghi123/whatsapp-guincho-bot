@@ -2,7 +2,7 @@
 //  Gemini — Extração Inteligente de Dados de Agendamento
 // =============================================================
 
-const { GoogleGenAI, Type } = require('@google/genai');
+const { GoogleGenAI } = require('@google/genai');
 const logger = require('./logger');
 
 let ai = null;
@@ -18,7 +18,7 @@ function init() {
 }
 
 /**
- * Usa o Gemini 2.5 Flash para interpretar mensagens livres de agendamento de guincho
+ * Usa o Gemini para interpretar mensagens livres de agendamento de guincho
  * e retornar um JSON estruturado com os campos da planilha.
  *
  * @param {string} text - Texto bruto da mensagem do WhatsApp
@@ -28,72 +28,78 @@ async function parseWithGemini(text) {
   if (!ai) return null;
 
   try {
-    const prompt = `Você é um assistente especializado em extrair dados de pedidos de guincho/transporte de veículos enviados em grupos de WhatsApp.
-Analise a mensagem abaixo e determine se ela representa um agendamento de transporte/guincho.
-Se NÃO for uma solicitação de guincho ou agendamento de transporte, defina isAgendamento como false.
-Se FOR um agendamento, extraia as informações com precisão:
+    const prompt = `Você é um assistente especializado em extrair dados de pedidos de transporte/guincho de veículos enviados em grupos de WhatsApp.
+Analise a mensagem abaixo e extraia as informações.
+
+Retorne EXCLUSIVAMENTE um objeto JSON válido (sem texto ou markdown antes ou depois) com a seguinte estrutura:
+{
+  "isAgendamento": true,
+  "veiculo": "modelo do veículo (ex: KICKS, VERSA, HB20, TIGGO 5X, KAIT ADVANCE)",
+  "cor": "cor do veículo ou string vazia",
+  "chassiPlaca": "placa ou chassi do veículo ou string vazia",
+  "freioEletronico": "SIM ou NÃO ou string vazia",
+  "departamento": "classifique estritamente em um destes 4: NOVOS, SEMI NOVOS, FUNILARIA ou MECANICA (se não informado, use NOVOS)",
+  "veiculoImobilizado": "SIM ou NÃO ou string vazia",
+  "origem": "local de coleta/origem",
+  "responsavelEntrega": "responsável pela entrega na origem ou string vazia",
+  "destino": "local de entrega/destino",
+  "responsavelRecebimento": "responsável pelo recebimento no destino ou string vazia",
+  "transporte": "PLATAFORMA ou CEGONHA (padrão PLATAFORMA)",
+  "agendarPara": "data agendada ou string vazia",
+  "faturarPara": "concessionária/loja para emissão da nota fiscal (ex: KENTO MM, KENTO SJBV, XIAN MM, XIAN SJBV, HONDA MM, HYMAX MG, KODYVE, HZ CAMPINAS; se não explícito, deduza pela concessionária de destino ou origem)"
+}
+
+Se a mensagem NÃO tiver relação com transporte, guincho ou movimentação de veículos, retorne:
+{"isAgendamento": false}
 
 MENSAGEM:
 """
 ${text}
 """`;
 
-    const modelsToTry = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-3.6-flash'];
-    let response = null;
+    const models = ['gemini-3.6-flash', 'gemini-3.5-flash'];
+    let responseText = null;
 
-    for (const modelName of modelsToTry) {
-      try {
-        response = await ai.models.generateContent({
-          model: modelName,
-          contents: prompt,
-          config: {
-            responseMimeType: 'application/json',
-            responseSchema: {
-              type: Type.OBJECT,
-              properties: {
-                isAgendamento: {
-                  type: Type.BOOLEAN,
-                  description: 'Verdadeiro se a mensagem for um pedido de guincho/transporte de veículo',
-                },
-                veiculo: { type: Type.STRING, description: 'Modelo do veículo (ex: KICKS EXCLUSIVE)' },
-                cor: { type: Type.STRING, description: 'Cor do veículo' },
-                chassiPlaca: { type: Type.STRING, description: 'Número do chassi ou placa' },
-                freioEletronico: { type: Type.STRING, description: 'SIM ou NÃO' },
-                departamento: { type: Type.STRING, description: 'Departamento solicitante' },
-                veiculoImobilizado: { type: Type.STRING, description: 'SIM ou NÃO' },
-                origem: { type: Type.STRING, description: 'Local de origem/coleta do veículo' },
-                responsavelEntrega: { type: Type.STRING, description: 'Nome de quem vai entregar o veículo na origem' },
-                destino: { type: Type.STRING, description: 'Local de destino do veículo' },
-                responsavelRecebimento: { type: Type.STRING, description: 'Nome de quem vai receber o veículo no destino' },
-                deptoEntrega: { type: Type.STRING, description: 'Departamento de entrega' },
-                agendarPara: { type: Type.STRING, description: 'Data do agendamento (ex: 14/09/2026)' },
-                faturarPara: { type: Type.STRING, description: 'Para quem deve ser faturado' },
-              },
-              required: ['isAgendamento'],
-            },
-          },
-        });
-        if (response && response.text) break;
-      } catch (err) {
-        // Tenta o próximo modelo
+    for (const model of models) {
+      for (let attempt = 1; attempt <= 2; attempt++) {
+        try {
+          const res = await ai.models.generateContent({
+            model,
+            contents: prompt,
+          });
+          if (res && res.text) {
+            responseText = res.text;
+            break;
+          }
+        } catch (err) {
+          if (err.status === 503 && attempt < 2) {
+            await new Promise((r) => setTimeout(r, 1000));
+            continue;
+          }
+        }
       }
+      if (responseText) break;
     }
 
-    if (!response || !response.text) return null;
+    if (!responseText) return null;
 
-    const parsed = JSON.parse(response.text);
-    if (!parsed.isAgendamento) {
+    // Extrai o bloco JSON da resposta
+    const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) return null;
+
+    const parsed = JSON.parse(jsonMatch[0]);
+
+    if (!parsed.isAgendamento && !(parsed.veiculo && (parsed.origem || parsed.destino))) {
       return null;
     }
 
-    // Validação mínima para garantir integridade
     if (!parsed.veiculo && !parsed.origem && !parsed.destino) {
       return null;
     }
 
     return parsed;
   } catch (err) {
-    logger.warn('Erro ao processar com Gemini:', err.message);
+    logger.debug(`Aviso ao interpretar com Gemini: ${err.message}`);
     return null;
   }
 }

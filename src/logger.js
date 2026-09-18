@@ -25,10 +25,28 @@ function timestamp() {
   });
 }
 
+const fs = require('fs');
+const path = require('path');
+
+const logDir = path.resolve(__dirname, '../logs');
+const logFile = path.join(logDir, 'bot.log');
+
 function formatMsg(level, color, ...args) {
-  const ts = `${COLORS.gray}[${timestamp()}]${COLORS.reset}`;
+  const timeStr = timestamp();
+  const ts = `${COLORS.gray}[${timeStr}]${COLORS.reset}`;
   const tag = `${color}[${level}]${COLORS.reset}`;
   console.log(ts, tag, ...args);
+
+  // Grava imediatamente no arquivo de log sem buffering
+  try {
+    if (!fs.existsSync(logDir)) {
+      fs.mkdirSync(logDir, { recursive: true });
+    }
+    const cleanMsg = args
+      .map((a) => (typeof a === 'object' ? JSON.stringify(a) : String(a)))
+      .join(' ');
+    fs.appendFileSync(logFile, `[${timeStr}] [${level}] ${cleanMsg}\r\n`, 'utf8');
+  } catch (e) {}
 }
 
 const logger = {

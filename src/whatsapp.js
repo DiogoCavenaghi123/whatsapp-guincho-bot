@@ -3,12 +3,12 @@
 // =============================================================
 
 const { Client, LocalAuth } = require('whatsapp-web.js');
+const Message = require('whatsapp-web.js/src/structures/Message');
 const qrcode = require('qrcode-terminal');
 const logger = require('./logger');
-const { parseAgendamento, toSheetRow } = require('./parser');
+const { parseAgendamento, toSheetRow, resolveNotaFiscal } = require('./parser');
 const sheets = require('./sheets');
 const gemini = require('./gemini');
-const { calculateTripDetails } = require('./distance');
 
 /**
  * Cria e inicializa o cliente WhatsApp.
@@ -35,48 +35,90 @@ function createClient(config) {
     },
   });
 
+  // ── Carregando WhatsApp ────────────────────────────────────
+  client.on('loading_screen', (percent, message) => {
+    logger.info(`Carregando WhatsApp: ${percent}%...`);
+  });
+
   // ── QR Code ────────────────────────────────────────────────
   client.on('qr', (qr) => {
-    logger.info('Escaneie o QR Code abaixo com o WhatsApp:');
+    logger.info('Escaneie o QR Code abaixo com o WhatsApp do celular:');
     console.log('');
     qrcode.generate(qr, { small: true });
     console.log('');
-    logger.info('Abra o WhatsApp → Menu (⋮) → Dispositivos conectados → Conectar dispositivo');
+    logger.info('Abra o WhatsApp → Menu (⋮) → Aparelhos conectados → Conectar um aparelho');
   });
 
   // ── Autenticação ───────────────────────────────────────────
   client.on('authenticated', () => {
-    logger.success('WhatsApp autenticado com sucesso');
+    logger.success('WhatsApp autenticado com sucesso!');
   });
 
   client.on('auth_failure', (msg) => {
-    logger.error('Falha na autenticação:', msg);
-    logger.info('Tente apagar a pasta .wwebjs_auth/ e escanear o QR code novamente');
+    logger.error('Falha na autenticação do WhatsApp:', msg);
   });
 
-  // ── Pronto ─────────────────────────────────────────────────
+  // ── Pronto para uso ────────────────────────────────────────
+  let scanStarted = false;
   client.on('ready', async () => {
-    logger.success('Bot conectado e pronto! 🚀');
+    logger.success('Bot conectado ao WhatsApp e pronto! 🚀');
     logger.info(`Monitorando grupo: ${config.groupId}`);
 
-    // Varredura de mensagens enviadas enquanto o bot esteve desligado
+    if (scanStarted) {
+      logger.debug('Varredura inicial já foi disparada anteriormente, ignorando evento duplicado.');
+      return;
+    }
+    scanStarted = true;
+
+    // Aguarda sincronização do WhatsApp Web
+    logger.info('Aguardando sincronização inicial das conversas (5 segundos)...');
+    await new Promise((resolve) => setTimeout(resolve, 5000));
+
+    // Varredura de mensagens enviadas desde o início do ciclo atual (24/08 em diante)
     try {
-      logger.info('Verificando mensagens recentes do grupo...');
-      const chat = await client.getChatById(config.groupId);
-      if (chat) {
-        const recentMessages = await chat.fetchMessages({ limit: 30 });
-        logger.info(`Analisando ${recentMessages.length} mensagens recentes do histórico...`);
-        for (const msg of recentMessages) {
-          try {
-            await handleMessage(msg, config, true); // true = histórico, não responde no grupo
-          } catch (e) {
-            // Ignora falhas pontuais de mensagens do histórico
+      logger.info('Iniciando varredura do histórico do grupo...');
+      // Data de corte: 24 de Agosto de 2026 (início do ciclo de faturamento atual)
+      const cutoffDate = new Date(2026, 7, 24, 0, 0, 0);
+      const recentMessages = await fetchGroupMessagesSafely(client, config.groupId, cutoffDate);
+
+      const cycleMessages = recentMessages
+        .filter((msg) => {
+          const msgDate = new Date(msg.timestamp * 1000);
+          return msgDate >= cutoffDate;
+        })
+        .sort((a, b) => a.timestamp - b.timestamp);
+
+      logger.info(
+        `Histórico: ${cycleMessages.length} mensagens encontradas desde 24/08/2026 para análise.`
+      );
+
+      let foundCount = 0;
+      let insertedCount = 0;
+      let duplicateCount = 0;
+
+      for (const msg of cycleMessages) {
+        try {
+          const res = await handleMessage(msg, config, true); // true = histórico, não responde no grupo
+          if (res && res.isAgendamento) {
+            foundCount++;
+            if (res.inserted) {
+              insertedCount++;
+            } else {
+              duplicateCount++;
+            }
           }
+        } catch (e) {
+          logger.warn(`Erro ao processar mensagem do histórico: ${e.message}`);
         }
-        logger.success('Varredura inicial concluída! Planilha atualizada.');
+        // Intervalo de 600ms para evitar estourar cota do Google Sheets e Gemini
+        await new Promise((resolve) => setTimeout(resolve, 600));
       }
+
+      logger.success(
+        `Varredura concluída! ${foundCount} agendamento(s) identificado(s): ${insertedCount} novo(s) cadastrado(s) na planilha e ${duplicateCount} já existente(s).`
+      );
     } catch (syncErr) {
-      logger.debug(`Aviso na varredura inicial: ${syncErr.message}`);
+      logger.warn(`Aviso na varredura inicial: ${syncErr.message || syncErr}`);
     }
 
     logger.info('Aguardando mensagens de agendamento em tempo real...');
@@ -107,11 +149,118 @@ function createClient(config) {
 }
 
 /**
+ * Busca mensagens do grupo com estratégia resiliente de paginação até a data de corte
+ *
+ * @param {Client} client
+ * @param {string} groupId
+ * @param {Date}   cutoffDate
+ * @returns {Promise<Array<Message>>}
+ */
+async function fetchGroupMessagesSafely(client, groupId, cutoffDate) {
+  const cutoffTs = Math.floor(cutoffDate.getTime() / 1000);
+
+  // 1. Abre a janela do chat no WhatsApp Web para ativar e renderizar o histórico
+  try {
+    if (client.interface && typeof client.interface.openChatWindow === 'function') {
+      logger.info('Abrindo grupo no WhatsApp Web para sincronizar conversas...');
+      await client.interface.openChatWindow(groupId);
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+    }
+  } catch (err) {
+    logger.debug(`openChatWindow aviso: ${err.message}`);
+  }
+
+  // 2. Rolagem ativa de histórico no WhatsApp Web com intervalo entre requisições
+  try {
+    logger.info('Carregando mensagens anteriores do grupo (desde 24/08/2026)...');
+    await client.pupPage.evaluate(async (chatId, cutoffTimestamp) => {
+      const chatWid = window.require('WAWebWidFactory').createWid(chatId);
+      const chat =
+        window.require('WAWebCollections').Chat.get(chatWid) ||
+        (await window.require('WAWebFindChatAction').findOrCreateLatestChat(chatWid))?.chat;
+
+      if (!chat || !chat.msgs) return;
+
+      const loader = window.require('WAWebChatLoadMessages');
+
+      for (let i = 0; i < 35; i++) {
+        const models = chat.msgs.getModelsArray ? chat.msgs.getModelsArray() : chat.msgs;
+        const oldestMsg = models && models.length > 0 ? models[0] : null;
+        if (oldestMsg && oldestMsg.t <= cutoffTimestamp) {
+          break;
+        }
+
+        try {
+          if (loader && typeof loader.loadEarlierMsgs === 'function') {
+            await loader.loadEarlierMsgs({ chat });
+          }
+        } catch (e) {}
+
+        // Simula rolagem no contêiner de mensagens
+        const pane = document.querySelector('div[role="application"] [tabindex="-1"]');
+        if (pane) pane.scrollTop = 0;
+
+        await new Promise((r) => setTimeout(r, 600));
+      }
+    }, groupId, cutoffTs);
+  } catch (err) {
+    logger.debug(`Aviso na rolagem de histórico: ${err.message}`);
+  }
+
+  // 3. Extrai todas as mensagens acumuladas no chat
+  try {
+    const rawMsgs = await client.pupPage.evaluate((chatId) => {
+      const chatWid = window.require('WAWebWidFactory').createWid(chatId);
+      const chat =
+        window.require('WAWebCollections').Chat.get(chatWid) ||
+        (window.require('WAWebFindChatAction')?.findOrCreateLatestChat(chatWid))?.chat;
+
+      if (!chat || !chat.msgs) return [];
+
+      return chat.msgs
+        .getModelsArray()
+        .filter((m) => !m.isNotification)
+        .sort((a, b) => (a.t > b.t ? 1 : -1))
+        .map((m) => window.WWebJS.getMessageModel(m));
+    }, groupId);
+
+    if (rawMsgs && rawMsgs.length > 0) {
+      logger.info(`Total de ${rawMsgs.length} mensagens recuperadas no grupo.`);
+      return rawMsgs.map((m) => new Message(client, m));
+    }
+  } catch (err) {
+    logger.debug(`Extração direta falhou, usando chat.fetchMessages: ${err.message}`);
+  }
+
+  // 4. Fallback padrão via fetchMessages
+  try {
+    const chat = await client.getChatById(groupId);
+    if (chat && typeof chat.fetchMessages === 'function') {
+      const msgs = await chat.fetchMessages({ limit: 400 });
+      if (msgs && msgs.length > 0) {
+        logger.info(`Fallback: ${msgs.length} mensagens recuperadas.`);
+        return msgs;
+      }
+    }
+  } catch (err) {
+    logger.warn(`Aviso no fallback de leitura: ${err.message}`);
+  }
+
+  return [];
+}
+
+/**
  * Processa uma mensagem recebida.
  */
 async function handleMessage(message, config, isHistorical = false) {
   // Ignora se não é do grupo alvo (suporta msgs recebidas e enviadas por você)
-  const isFromTargetGroup = message.from === config.groupId || message.to === config.groupId;
+  const remote = message.id?.remote?._serialized || message.id?.remote || '';
+  const isFromTargetGroup =
+    isHistorical ||
+    message.from === config.groupId ||
+    message.to === config.groupId ||
+    remote === config.groupId;
+
   if (!isFromTargetGroup) return;
   const chatId = message.from === config.groupId ? message.from : message.to;
 
@@ -153,39 +302,24 @@ async function handleMessage(message, config, isHistorical = false) {
 
   // Monta dados do remetente com segurança
   let sender = message.author || message._data?.notifyName || chatId;
-  try {
-    const contact = await message.getContact();
-    sender = contact.pushname || contact.name || sender;
-  } catch (e) {
-    // Caso getContact falhe no Puppeteer, usa o autor/notifyName direto
-  }
-
-  // ── Cálculo de Rota e Distância ────────────────────────────
-  logger.info('Calculando rota e valor do transporte...');
-  const trip = await calculateTripDetails(agendamento.origem, agendamento.destino);
-
-  if (trip) {
-    logger.success(
-      `Rota calculada: ${trip.distanciaIdaKm} km (~${trip.duracaoTexto}) | Cobrado: ${trip.distanciaCobradaKm} km (${trip.valorFormatado})`
-    );
+  if (!isHistorical) {
+    try {
+      const contact = await message.getContact();
+      sender = contact.pushname || contact.name || sender;
+    } catch (e) {
+      // Caso getContact falhe no Puppeteer, usa o autor/notifyName direto
+    }
   }
 
   // Timestamp da mensagem
   const msgDate = new Date(message.timestamp * 1000);
-  const timestamp = msgDate.toLocaleString('pt-BR', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
 
-  // Converte para linha da planilha e insere
-  const row = toSheetRow(agendamento, timestamp, sender, trip);
+  // Converte para linha da planilha e insere na aba dinâmica do ciclo do mês
+  const row = toSheetRow(agendamento, msgDate);
   const inserted = await sheets.appendRow(
     config.spreadsheetId,
-    config.sheetName,
-    row
+    row,
+    msgDate
   );
 
   if (inserted) {
@@ -197,41 +331,38 @@ async function handleMessage(message, config, isHistorical = false) {
     if (!isHistorical) {
       try {
         let replyText = `✅ *AGENDAMENTO REGISTRADO!* 🚛\n\n`;
-      replyText += `🚗 *Veículo:* ${agendamento.veiculo || 'N/D'}`;
-      if (agendamento.cor) replyText += ` (${agendamento.cor})`;
-      replyText += `\n`;
+        replyText += `🚗 *Veículo:* ${agendamento.veiculo || 'N/D'}`;
+        if (agendamento.cor) replyText += ` (${agendamento.cor})`;
+        replyText += `\n`;
 
-      if (agendamento.chassiPlaca) replyText += `🔖 *Chassi / Placa:* ${agendamento.chassiPlaca}\n`;
-      if (agendamento.freioEletronico) replyText += `⚡ *Freio Eletrônico:* ${agendamento.freioEletronico}\n`;
-      if (agendamento.veiculoImobilizado) replyText += `🛑 *Veículo Imobilizado:* ${agendamento.veiculoImobilizado}\n`;
+        if (agendamento.chassiPlaca) replyText += `🔖 *Chassi / Placa:* ${agendamento.chassiPlaca}\n`;
+        if (agendamento.freioEletronico) replyText += `⚡ *Freio Eletrônico:* ${agendamento.freioEletronico}\n`;
+        if (agendamento.veiculoImobilizado) replyText += `🛑 *Veículo Imobilizado:* ${agendamento.veiculoImobilizado}\n`;
 
-      replyText += `\n📍 *Origem:* ${agendamento.origem}\n`;
-      if (agendamento.responsavelEntrega) replyText += `👤 *Resp. Entrega:* ${agendamento.responsavelEntrega}\n`;
+        const depto = agendamento.departamento || agendamento.deptoEntrega;
+        if (depto) {
+          replyText += `🏢 *Departamento:* ${depto}\n`;
+        }
 
-      replyText += `\n🏁 *Destino:* ${agendamento.destino}\n`;
-      if (agendamento.responsavelRecebimento) replyText += `🤝 *Resp. Recebimento:* ${agendamento.responsavelRecebimento}\n`;
-      if (agendamento.deptoEntrega || agendamento.departamento) {
-        replyText += `🏢 *Depto:* ${agendamento.deptoEntrega || agendamento.departamento}\n`;
-      }
+        replyText += `\n📍 *Origem (Coleta):* ${agendamento.origem}\n`;
+        if (agendamento.responsavelEntrega) replyText += `👤 *Resp. Entrega:* ${agendamento.responsavelEntrega}\n`;
 
-      if (agendamento.agendarPara) replyText += `📅 *Agendar Para:* ${agendamento.agendarPara}\n`;
-      if (agendamento.faturarPara) replyText += `💳 *Faturar Para:* ${agendamento.faturarPara}\n`;
+        replyText += `\n🏁 *Destino (Entrega):* ${agendamento.destino}\n`;
+        if (agendamento.responsavelRecebimento) replyText += `🤝 *Resp. Recebimento:* ${agendamento.responsavelRecebimento}\n`;
 
-      if (trip) {
-        replyText += `\n─────────────────────\n`;
-        replyText += `📏 *Distância (ida):* ${trip.distanciaIdaKm} km\n`;
-        replyText += `⏱️ *Tempo estimado:* ~${trip.duracaoTexto}\n`;
-        replyText += `🔄 *Cobrança:* Ida e Volta (${trip.distanciaCobradaKm} km a R$ ${trip.valorPorKm.toFixed(2)}/km)\n`;
-        replyText += `💰 *Valor Total:* *${trip.valorFormatado}*\n`;
-      }
+        if (agendamento.agendarPara) replyText += `📅 *Agendar Para:* ${agendamento.agendarPara}\n`;
+        const nf = resolveNotaFiscal(agendamento);
+        if (nf) replyText += `🧾 *Nota Fiscal:* ${nf}\n`;
 
         await message.reply(replyText);
-        logger.success('Resposta completa enviada no grupo do WhatsApp!');
+        logger.success('Resposta enviada no grupo do WhatsApp!');
       } catch (replyErr) {
         logger.warn(`Não foi possível responder no WhatsApp: ${replyErr.message}`);
       }
     }
   }
+
+  return { isAgendamento: true, inserted: !!inserted };
 }
 
 module.exports = { createClient };
