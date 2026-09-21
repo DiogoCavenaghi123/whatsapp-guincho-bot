@@ -1,14 +1,20 @@
 // =============================================================
 //  WhatsApp — Conexão e listener de mensagens via whatsapp-web.js
+//  WhatsApp — Conexão, listeners, varredura e histórico
 // =============================================================
 
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const Message = require('whatsapp-web.js/src/structures/Message');
 const qrcode = require('qrcode-terminal');
 const logger = require('./logger');
-const { parseAgendamento, toSheetRow, resolveNotaFiscal } = require('./parser');
+const { parseAgendamento, toSheetRow, resolveNotaFiscal, isOperationalNoise } = require('./parser');
 const sheets = require('./sheets');
 const gemini = require('./gemini');
+const history = require('./history');
+
+let activeClient = null;
+let activeConfig = null;
+let isScanning = false;
 
 /**
  * Cria e inicializa o cliente WhatsApp.
@@ -17,9 +23,12 @@ const gemini = require('./gemini');
  * @param {string} config.groupId      — ID do grupo para monitorar
  * @param {string} config.spreadsheetId — ID da planilha Google Sheets
  * @param {string} config.sheetName     — nome da aba na planilha
+ * @param {string} [config.sheetName]   — nome da aba na planilha
  * @returns {Client}
  */
 function createClient(config) {
+  activeConfig = config;
+
   const client = new Client({
     authStrategy: new LocalAuth(),
     puppeteer: {
@@ -34,6 +43,8 @@ function createClient(config) {
       ],
     },
   });
+
+  activeClient = client;
 
   // ── Carregando WhatsApp ────────────────────────────────────
   client.on('loading_screen', (percent, message) => {
@@ -71,6 +82,7 @@ function createClient(config) {
     scanStarted = true;
 
     // Aguarda sincronização do WhatsApp Web
+    // Aguarda sincronização inicial do WhatsApp Web
     logger.info('Aguardando sincronização inicial das conversas (5 segundos)...');
     await new Promise((resolve) => setTimeout(resolve, 5000));
 
@@ -80,6 +92,8 @@ function createClient(config) {
       // Data de corte: 24 de Agosto de 2026 (início do ciclo de faturamento atual)
       const cutoffDate = new Date(2026, 7, 24, 0, 0, 0);
       const recentMessages = await fetchGroupMessagesSafely(client, config.groupId, cutoffDate);
+    // Executa varredura inicial padrão
+    await scanGroupMessages();
 
       const cycleMessages = recentMessages
         .filter((msg) => {
@@ -150,11 +164,94 @@ function createClient(config) {
 
 /**
  * Busca mensagens do grupo com estratégia resiliente de paginação até a data de corte
+ * Executa a varredura do grupo a partir de uma data de corte.
  *
  * @param {Client} client
  * @param {string} groupId
  * @param {Date}   cutoffDate
  * @returns {Promise<Array<Message>>}
+ * @param {Date} [customCutoffDate]
+ * @returns {Promise<{ foundCount: number, insertedCount: number, duplicateCount: number, discardedCount: number }>}
+ */
+async function scanGroupMessages(customCutoffDate = null) {
+  if (!activeClient || !activeConfig) {
+    logger.warn('Cliente WhatsApp ainda não está pronto para varredura.');
+    return { foundCount: 0, insertedCount: 0, duplicateCount: 0, discardedCount: 0 };
+  }
+
+  if (isScanning) {
+    logger.warn('Já existe uma varredura em andamento. Aguarde o término.');
+    return { foundCount: 0, insertedCount: 0, duplicateCount: 0, discardedCount: 0 };
+  }
+
+  isScanning = true;
+
+  try {
+    // Se não especificada, calcula o início do ciclo atual (dia 24 do mês correspondente)
+    let cutoffDate = customCutoffDate;
+    if (!cutoffDate) {
+      const now = new Date();
+      if (now.getDate() >= 24) {
+        cutoffDate = new Date(now.getFullYear(), now.getMonth(), 24, 0, 0, 0);
+      } else {
+        cutoffDate = new Date(now.getFullYear(), now.getMonth() - 1, 24, 0, 0, 0);
+      }
+    }
+
+    const cutoffStr = cutoffDate.toLocaleDateString('pt-BR');
+    logger.info(`Iniciando varredura das mensagens do grupo desde ${cutoffStr}...`);
+
+    const recentMessages = await fetchGroupMessagesSafely(activeClient, activeConfig.groupId, cutoffDate);
+
+    const cycleMessages = recentMessages
+      .filter((msg) => {
+        const msgDate = new Date(msg.timestamp * 1000);
+        return msgDate >= cutoffDate;
+      })
+      .sort((a, b) => a.timestamp - b.timestamp);
+
+    logger.info(`Histórico: ${cycleMessages.length} mensagens encontradas desde ${cutoffStr} para análise.`);
+
+    let foundCount = 0;
+    let insertedCount = 0;
+    let duplicateCount = 0;
+    let discardedCount = 0;
+
+    for (const msg of cycleMessages) {
+      try {
+        const res = await handleMessage(msg, activeConfig, true); // true = histórico
+        if (res && res.isAgendamento) {
+          foundCount++;
+          if (res.inserted) {
+            insertedCount++;
+          } else {
+            duplicateCount++;
+          }
+        } else {
+          discardedCount++;
+        }
+      } catch (e) {
+        logger.warn(`Erro ao processar mensagem do histórico: ${e.message}`);
+      }
+      // Pacing para respeitar cotas de requisição da API
+      await new Promise((resolve) => setTimeout(resolve, 600));
+    }
+
+    logger.success(
+      `Varredura concluída! ${foundCount} agendamento(s) identificado(s): ${insertedCount} novo(s), ${duplicateCount} já existente(s) e ${discardedCount} descartada(s).`
+    );
+
+    return { foundCount, insertedCount, duplicateCount, discardedCount };
+  } catch (err) {
+    logger.warn(`Aviso na varredura: ${err.message}`);
+    return { foundCount: 0, insertedCount: 0, duplicateCount: 0, discardedCount: 0 };
+  } finally {
+    isScanning = false;
+  }
+}
+
+/**
+ * Busca mensagens do grupo com estratégia resiliente de paginação até a data de corte
  */
 async function fetchGroupMessagesSafely(client, groupId, cutoffDate) {
   const cutoffTs = Math.floor(cutoffDate.getTime() / 1000);
@@ -172,7 +269,7 @@ async function fetchGroupMessagesSafely(client, groupId, cutoffDate) {
 
   // 2. Rolagem ativa de histórico no WhatsApp Web com intervalo entre requisições
   try {
-    logger.info('Carregando mensagens anteriores do grupo (desde 24/08/2026)...');
+    logger.info(`Carregando mensagens anteriores do grupo (desde ${cutoffDate.toLocaleDateString('pt-BR')})...`);
     await client.pupPage.evaluate(async (chatId, cutoffTimestamp) => {
       const chatWid = window.require('WAWebWidFactory').createWid(chatId);
       const chat =
@@ -183,7 +280,7 @@ async function fetchGroupMessagesSafely(client, groupId, cutoffDate) {
 
       const loader = window.require('WAWebChatLoadMessages');
 
-      for (let i = 0; i < 35; i++) {
+      for (let i = 0; i < 40; i++) {
         const models = chat.msgs.getModelsArray ? chat.msgs.getModelsArray() : chat.msgs;
         const oldestMsg = models && models.length > 0 ? models[0] : null;
         if (oldestMsg && oldestMsg.t <= cutoffTimestamp) {
@@ -262,72 +359,123 @@ async function handleMessage(message, config, isHistorical = false) {
     remote === config.groupId;
 
   if (!isFromTargetGroup) return;
+  if (!isFromTargetGroup) return { isAgendamento: false };
   const chatId = message.from === config.groupId ? message.from : message.to;
 
   // Ignora mensagens sem texto (imagens, áudios, stickers, etc.)
   const body = message.body;
   if (!body || body.trim().length === 0) return;
+  if (!body || body.trim().length === 0) return { isAgendamento: false };
 
   // Ignora respostas geradas pelo próprio bot para evitar loop infinito
   if (body.includes('AGENDAMENTO REGISTRADO') || body.includes('AGENDAMENTO DUPLICADO')) {
     return;
+    return { isAgendamento: false };
+  }
+
+  const msgId = message.id?._serialized || message.id?.id || String(message.timestamp);
+  const msgDate = new Date(message.timestamp * 1000);
+
+  // Monta identificação do remetente
+  let sender = message.author || message._data?.notifyName || chatId;
+  if (!isHistorical) {
+    try {
+      const contact = await message.getContact();
+      sender = contact.pushname || contact.name || sender;
+    } catch (e) {}
   }
 
   logger.info(`[DEBUG] Mensagem recebida no grupo Agenda guincho: "${body.substring(0, 50)}..."`);
 
   // 1. Tenta extrair com o parser rápido (padrão de texto com rótulos)
+  // 1. Pré-Filtro: Se for ruído operacional (confirmação simples, aviso de guincho livre, etc.)
+  if (isOperationalNoise(body)) {
+    history.recordMessage({
+      messageId: msgId,
+      timestamp: msgDate,
+      author: sender,
+      body,
+      status: 'DESCARTADO',
+      reason: 'Aviso operacional ou confirmação simples (sem pedido de transporte)',
+    });
+    logger.debug(`Mensagem descartada pelo pré-filtro de ruído operacional.`);
+    return { isAgendamento: false };
+  }
+
+  // 2. Parser Regex Rápido
   let agendamento = parseAgendamento(body);
 
   // 2. Se o formato for livre ou informal, aciona o Gemini AI
+  // 3. Fallback inteligente com Google Gemini AI
   if (!agendamento) {
     logger.info('Tentando interpretar mensagem com Gemini AI...');
+    logger.info('Interpretando mensagem com Gemini AI...');
     agendamento = await gemini.parseWithGemini(body);
     if (agendamento) {
       logger.success('Gemini AI identificou com sucesso o agendamento! 🤖');
     }
   }
 
+  // Se não foi identificado como agendamento
   if (!agendamento) {
     return;
+    history.recordMessage({
+      messageId: msgId,
+      timestamp: msgDate,
+      author: sender,
+      body,
+      status: 'DESCARTADO',
+      reason: 'Conversa ou texto sem veículo/rota identificados',
+    });
+    return { isAgendamento: false };
   }
 
   // ── Agendamento detectado! ─────────────────────────────────
+  // ── VALIDAÇÃO ESTRITA DE VEÍCULO ────────────────────────────
+  // Se não houver modelo de veículo claro, JAMAIS insere na planilha!
+  const veiculoLimpo = (agendamento.veiculo || '').trim();
+  if (!veiculoLimpo || veiculoLimpo === '-' || veiculoLimpo === 'N/D' || veiculoLimpo.length < 2) {
+    history.recordMessage({
+      messageId: msgId,
+      timestamp: msgDate,
+      author: sender,
+      body,
+      status: 'DESCARTADO',
+      reason: 'Rejeitado: modelo do veículo não informado ou inválido',
+      extractedData: agendamento,
+    });
+    logger.warn('Agendamento rejeitado: modelo do veículo não informado ou inválido.');
+    return { isAgendamento: false };
+  }
+
+  // ── Agendamento legítimo detectado! ─────────────────────────
   logger.bot('📋 Agendamento detectado!');
-  logger.bot(`   Veículo: ${agendamento.veiculo || '-'}`);
+  logger.bot(`   Veículo: ${agendamento.veiculo}`);
   logger.bot(`   Origem:  ${agendamento.origem || '-'}`);
   logger.bot(`   Destino: ${agendamento.destino || '-'}`);
   if (agendamento.agendarPara) {
     logger.bot(`   Data:    ${agendamento.agendarPara}`);
   }
 
-  // Monta dados do remetente com segurança
-  let sender = message.author || message._data?.notifyName || chatId;
-  if (!isHistorical) {
-    try {
-      const contact = await message.getContact();
-      sender = contact.pushname || contact.name || sender;
-    } catch (e) {
-      // Caso getContact falhe no Puppeteer, usa o autor/notifyName direto
-    }
-  }
-
-  // Timestamp da mensagem
-  const msgDate = new Date(message.timestamp * 1000);
-
-  // Converte para linha da planilha e insere na aba dinâmica do ciclo do mês
+  // Converte para linha da planilha e tenta inserir
   const row = toSheetRow(agendamento, msgDate);
-  const inserted = await sheets.appendRow(
-    config.spreadsheetId,
-    row,
-    msgDate
-  );
+  const inserted = await sheets.appendRow(config.spreadsheetId, row, msgDate);
 
   if (inserted) {
-    logger.success(
-      `Agendamento registrado: ${agendamento.veiculo} → ${agendamento.destino}`
-    );
+    logger.success(`Agendamento registrado: ${agendamento.veiculo} → ${agendamento.destino}`);
 
-    // ── Resposta automática no grupo do WhatsApp (apenas para mensagens em tempo real) ──
+    // Registra no histórico com status AGENDAMENTO
+    history.recordMessage({
+      messageId: msgId,
+      timestamp: msgDate,
+      author: sender,
+      body,
+      status: 'AGENDAMENTO',
+      reason: 'Agendamento cadastrado com sucesso na planilha',
+      extractedData: agendamento,
+    });
+
+    // Resposta no WhatsApp apenas para mensagens em tempo real
     if (!isHistorical) {
       try {
         let replyText = `✅ *AGENDAMENTO REGISTRADO!* 🚛\n\n`;
@@ -360,10 +508,24 @@ async function handleMessage(message, config, isHistorical = false) {
         logger.warn(`Não foi possível responder no WhatsApp: ${replyErr.message}`);
       }
     }
+  } else {
+    // Registro duplicado
+    history.recordMessage({
+      messageId: msgId,
+      timestamp: msgDate,
+      author: sender,
+      body,
+      status: 'DUPLICADO',
+      reason: 'Veículo já cadastrado na planilha para esta data',
+      extractedData: agendamento,
+    });
   }
 
   return { isAgendamento: true, inserted: !!inserted };
 }
 
-module.exports = { createClient };
-
+module.exports = {
+  createClient,
+  scanGroupMessages,
+  handleMessage,
+};

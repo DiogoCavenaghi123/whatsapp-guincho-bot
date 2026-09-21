@@ -4,10 +4,12 @@
 
 require('dotenv').config();
 
+const fs = require('fs');
+const path = require('path');
 const logger = require('./logger');
 const sheets = require('./sheets');
 const gemini = require('./gemini');
-const { createClient } = require('./whatsapp');
+const { createClient, scanGroupMessages } = require('./whatsapp');
 
 process.on('uncaughtException', (err) => {
   logger.error('Exceção não tratada:', err.stack || err.message);
@@ -23,6 +25,13 @@ async function main() {
   console.log('  🚛  Bot WhatsApp → Google Sheets (Agendamento Guincho)');
   console.log('══════════════════════════════════════════════════════════');
   console.log('');
+
+  // ── Gravar PID do Processo Imediatamente ────────────────────
+  const pidFile = path.resolve(__dirname, '../.bot.pid');
+  const cmdFile = path.resolve(__dirname, '../.bot.cmd');
+  try {
+    fs.writeFileSync(pidFile, String(process.pid), 'utf8');
+  } catch (e) {}
 
   // ── Inicializar Gemini AI ──────────────────────────────────
   gemini.init();
@@ -57,18 +66,31 @@ async function main() {
   const client = createClient({ groupId, spreadsheetId });
   await client.initialize();
 
-  // ── Controle de Processo / PID para Execução em Segundo Plano ─
-  const fs = require('fs');
-  const path = require('path');
-  const pidFile = path.resolve(__dirname, '../.bot.pid');
+  // ── Listener de Comandos IPC (ex: Releitura disparada pelo Painel) ──
+  fs.watchFile(cmdFile, { interval: 1000 }, async () => {
+    if (!fs.existsSync(cmdFile)) return;
+    try {
+      const content = fs.readFileSync(cmdFile, 'utf8').trim();
+      fs.unlinkSync(cmdFile);
+      if (!content) return;
 
-  try {
-    fs.writeFileSync(pidFile, String(process.pid), 'utf8');
-  } catch (e) {}
+      const cmdData = JSON.parse(content);
+      if (cmdData.cmd === 'rescan') {
+        logger.info('Comando de RELEITURA recebido do Painel de Controle! 🔄');
+        const cutoff = cmdData.since ? new Date(cmdData.since) : null;
+        await scanGroupMessages(cutoff);
+      }
+    } catch (e) {
+      logger.debug(`Aviso no processamento do .bot.cmd: ${e.message}`);
+    }
+  });
+
 
   const cleanup = async () => {
     try {
+      fs.unwatchFile(cmdFile);
       if (fs.existsSync(pidFile)) fs.unlinkSync(pidFile);
+      if (fs.existsSync(cmdFile)) fs.unlinkSync(cmdFile);
     } catch (e) {}
     try {
       await client.destroy();

@@ -471,10 +471,52 @@ async function ensureRowFormatting(spreadsheetId, sheetName, rowNumber, cachedRo
   });
 }
 
+/**
+ * Remove uma linha física da aba na planilha e invalida o cache.
+ *
+ * @param {string} spreadsheetId
+ * @param {string} sheetName
+ * @param {number} rowNumber - Número da linha na planilha (1-indexed, ex: 33)
+ */
+async function deleteRow(spreadsheetId, sheetName, rowNumber) {
+  const meta = await getSpreadsheetMetadata(spreadsheetId);
+  const sheetId = meta.sheetIdByTitle.get(sheetName);
+  if (sheetId === undefined) {
+    throw new Error(`Aba "${sheetName}" não encontrada na planilha.`);
+  }
+
+  await retryWithBackoff(async () => {
+    await sheetsClient.spreadsheets.batchUpdate({
+      spreadsheetId,
+      requestBody: {
+        requests: [
+          {
+            deleteDimension: {
+              range: {
+                sheetId,
+                dimension: 'ROWS',
+                startIndex: rowNumber - 1,
+                endIndex: rowNumber,
+              },
+            },
+          },
+        ],
+      },
+    });
+  });
+
+  // Invalida cache de linhas da aba
+  sheetRowsCache.delete(sheetName);
+  logger.success(`Linha ${rowNumber} removida com sucesso da aba "${sheetName}"!`);
+}
+
 module.exports = {
   init,
   ensureHeaders,
   appendRow,
+  deleteRow,
+  getSheetRows,
+  getSpreadsheetMetadata,
   getTargetMonthInfo,
   resolveSheetTab,
 };

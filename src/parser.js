@@ -171,6 +171,40 @@ function resolveTransporte(data) {
 }
 
 /**
+ * Verifica se a mensagem é apenas ruído operacional (confirmação, aviso de motorista, etc.)
+ * e não uma solicitação nova de transporte.
+ *
+ * @param {string} text
+ * @returns {boolean}
+ */
+function isOperationalNoise(text) {
+  if (!text || typeof text !== 'string') return true;
+  const clean = text.trim();
+
+  // Se tiver rótulos explícitos de agendamento, não é ruído simples
+  if (/^(?:VE[IÍ]CULO|CARRO|CHASSI|PLACA)\s*:?/im.test(clean)) {
+    return false;
+  }
+
+  // Avisos de motorista / guincho à disposição
+  if (/(?:guincho|cegonha)\s+a\s+disposi[çc][ãa]o/i.test(clean)) {
+    return true;
+  }
+
+  // Confirmações curtas de agendamento existente (ex: "Agendado 17/09", "Agendado guincho 18/09")
+  if (/^agendad[oa]\s+(?:guincho|cegonha|\d{1,2}[\/\-_]\d{1,2}|para|\b)/i.test(clean) && clean.length < 80) {
+    return true;
+  }
+
+  // Mensagens curtas de confirmação, agradecimento ou status
+  if (/^(?:ok|fechado|confirmad[oa]|liberad[oa]|chegou|saiu|bom dia|boa tarde|boa noite|obrigad[oa]|valeu)[.!]?$/i.test(clean)) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
  * Tenta extrair dados de agendamento de uma mensagem.
  *
  * @param {string} messageBody  — corpo da mensagem do WhatsApp
@@ -178,6 +212,10 @@ function resolveTransporte(data) {
  */
 function parseAgendamento(messageBody) {
   if (!messageBody || typeof messageBody !== 'string') return null;
+
+  if (isOperationalNoise(messageBody)) {
+    return null;
+  }
 
   const lines = messageBody
     .split('\n')
@@ -210,9 +248,16 @@ function parseAgendamento(messageBody) {
     return null;
   }
 
-  // Precisa ter pelo menos o veículo E pelo menos um ponto de rota (origem ou destino)
-  if (!result.veiculo || (!result.origem && !result.destino)) {
-    logger.debug(`Mensagem tem ${matchedCount} campos mas não possui veículo ou rota mínima`);
+  // O modelo de veículo é ESTRITAMENTE OBRIGATÓRIO (não pode ser vazio, "-" ou menor que 2 letras)
+  const veiculo = (result.veiculo || '').trim();
+  if (!veiculo || veiculo === '-' || veiculo === 'N/D' || veiculo.length < 2) {
+    logger.debug(`Mensagem tem ${matchedCount} campos mas não possui modelo de veículo válido`);
+    return null;
+  }
+
+  // Precisa ter pelo menos um ponto de rota (origem ou destino)
+  if (!result.origem && !result.destino) {
+    logger.debug(`Mensagem tem ${matchedCount} campos mas não possui rota mínima`);
     return null;
   }
 
@@ -289,6 +334,7 @@ function getHeaders() {
 
 module.exports = {
   parseAgendamento,
+  isOperationalNoise,
   toSheetRow,
   getHeaders,
   normalizeDepartment,

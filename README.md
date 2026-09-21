@@ -169,25 +169,38 @@ whatsapp-guincho-bot/
 ├── package.json               # Dependências e scripts de execução
 ├── README.md                  # Documentação completa do projeto
 │
+├── iniciar-painel.bat          # Inicia o Painel de Controle Web (Dashboard) e abre no navegador
 ├── iniciar-bot.bat            # Inicia o bot com janela de terminal visível
 ├── iniciar-segundo-plano.vbs  # Inicia o bot em segundo plano (sem janela)
 ├── parar-bot.bat              # Encerra o processo do bot com segurança
 ├── ver-status.bat             # Verifica se o bot está ativo e exibe os últimos logs
+├── configurar-rotina-diaria.bat # Configura o Agendador de Tarefas do Windows (07:00 às 19:00)
+├── testar-aviso-desligamento.bat # Testa a janela visual de 5 minutos antes do desligamento
 ├── enviar-para-github.bat     # Sincroniza e envia código para o GitHub
+│
+├── scripts/
+│   ├── aviso-desligamento.ps1  # Diálogo visual WPF com contagem regressiva de 5 minutos
+│   └── configurar-agendamento.ps1 # Registro das tarefas automáticas no Windows Task Scheduler
+│
+├── test/
+│   └── test-ai-classification.js # Bateria automatizada de testes de classificação e pré-filtros
 │
 └── src/
     ├── index.js               # Entry point do sistema e ciclo de vida
-    ├── whatsapp.js            # Cliente WhatsApp Web, listeners e histórico
-    ├── parser.js              # Parser Regex e resolução de concessionárias
-    ├── gemini.js              # Integração com Google Gemini 3.6 Flash
+    ├── whatsapp.js            # Cliente WhatsApp Web, listeners e varredura histórica
+    ├── parser.js              # Parser Regex, pré-filtros de ruído e concessionárias
+    ├── gemini.js              # Classificador com Google Gemini AI e fallback resiliente
     ├── sheets.js              # Integração Google Sheets v4, cache e layout
+    ├── history.js             # Módulo de persistência e auditoria de mensagens lidas
     ├── logger.js              # Logs coloridos e gravação contínua em arquivo
     ├── distance.js            # Módulo de cálculo de rotas e distâncias
     ├── start-bg.js            # Inicializador desacoplado de segundo plano
-    ├── status.js              # Verificador de processos ativos via WMIC
+    ├── status.js              # Verificador de processos ativos
     ├── stop.js                # Finalizador de processos do bot
-    ├── find-group.js          # Utilitário interativo para busca de grupos
-    └── list-groups.js         # Listagem de IDs de grupos da conta
+    └── dashboard/             # Painel de Controle Web
+        ├── server.js          # Servidor HTTP nativo Node.js com endpoints de API
+        ├── start-dashboard.js # Utilitário que inicia o servidor e abre o navegador
+        └── public/            # Interface visual (HTML, CSS e JavaScript moderno)
 ```
 
 ---
@@ -242,17 +255,51 @@ Abra a sua planilha no Google Sheets, clique em **Compartilhar** e adicione o e-
 
 ---
 
-## 🖥️ Execução e Atalhos (Segundo Plano)
+## 🎛️ Painel de Controle Web (Dashboard)
 
-O projeto conta com rotinas prontas para operação facilitada no Windows:
+O sistema inclui um **Painel de Controle completo** rodando localmente sem dependências externas adicionais:
+
+- **Controle Central**: Inicie ou pare o robô a qualquer momento com 1 clique.
+- **Métricas em Tempo Real**: Total de mensagens lidas, agendamentos confirmados, mensagens duplicadas ignoradas e conversas/ruídos descartados.
+- **Histórico de Mensagens**: Visualize cada mensagem lida no grupo, horário, remetente, classificação e os campos extraídos pela IA. Inclui busca rápida e filtros por status.
+- **Releitura sob Demanda**: Botão para reprocessar mensagens do grupo desde o início do ciclo de faturamento ou a partir de uma data selecionada no calendário.
+- **Terminal de Logs ao Vivo**: Acompanhe o fluxo operacional com rolagem automática e atualização contínua.
+
+Para abrir o Painel:
+- Duplo clique no atalho da Área de Trabalho **"Painel do Bot"** ou execute `iniciar-painel.bat`
+- O navegador abrirá automaticamente em `http://localhost:3000`
+
+---
+
+## ⏰ Rotina Automática Diária (07:00 às 19:00)
+
+O sistema opera de forma 100% autônoma através do Agendador de Tarefas do Windows:
+
+1. **Início Automático às 07:00**:
+   - A tarefa acorda o computador da suspensão (`WakeToRun`) e inicia o bot silenciosamente em segundo plano.
+   - O robô conecta ao WhatsApp e executa a sincronização do ciclo vigente.
+
+2. **Encerramento Seguro às 19:00 com Janela de 5 Minutos**:
+   - O processo do bot é finalizado com segurança.
+   - Uma **janela visual de alerta** aparece na tela com contagem regressiva de **5 minutos (300 segundos)** informando o encerramento do expediente.
+   - Se você estiver usando o computador e clicar em **"Cancelar Desligamento"**, o computador permanecerá ligado normalmente.
+   - Se ninguém responder após 5 minutos, o computador entra automaticamente em modo de suspensão/desligamento econômico.
+
+---
+
+## 🖥️ Execução e Atalhos
+
+Todos os atalhos essenciais estão disponíveis na pasta da Área de Trabalho **`BOT DO WHATSAPP`**:
 
 | Ação | Como Executar | Descrição |
 | :--- | :--- | :--- |
-| **Iniciar (Visível)** | Duplo clique em `iniciar-bot.bat` ou `npm start` | Abre o terminal e exibe os logs em tempo real |
-| **Iniciar (Segundo Plano)** | Duplo clique em `iniciar-segundo-plano.vbs` ou `npm run start:bg` | Roda silenciosamente sem ocupar janela no Windows |
-| **Verificar Status** | Duplo clique em `ver-status.bat` ou `npm run status` | Informa se o bot está rodando e exibe os 15 logs mais recentes |
-| **Parar Bot** | Duplo clique em `parar-bot.bat` ou `npm run stop` | Finaliza com segurança os processos ativos |
-| **Atualizar GitHub** | Duplo clique em `enviar-para-github.bat` | Faz o commit e envia todas as alterações para o repositório |
+| **Painel de Controle** | Atalho `Painel do Bot` ou `iniciar-painel.bat` | Abre a interface gráfica de controle e histórico |
+| **Iniciar (Visível)** | Atalho `Iniciar Bot Guincho` ou `iniciar-bot.bat` | Abre o terminal e exibe os logs em tempo real |
+| **Iniciar (Segundo Plano)** | Atalho `Iniciar Bot (Segundo Plano)` ou `iniciar-segundo-plano.vbs` | Roda silenciosamente em background |
+| **Verificar Status** | Atalho `Ver Status do Bot` ou `ver-status.bat` | Informa status e exibe os logs mais recentes |
+| **Parar Bot** | Atalho `Parar Bot` ou `parar-bot.bat` | Finaliza com segurança os processos ativos |
+| **Testar Aviso (5 min)** | Duplo clique em `testar-aviso-desligamento.bat` | Testa a janela visual de confirmação de desligamento |
+| **Atualizar GitHub** | Atalho `Enviar para o GitHub` ou `enviar-para-github.bat` | Faz o commit e envia todas as alterações para o repositório |
 
 ---
 
