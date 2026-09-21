@@ -1,15 +1,17 @@
-# 🚛 WhatsApp Guincho Bot
+# 🚛 WhatsApp Guincho Bot — Grupo Hazul
 
 <p align="center">
-  <strong>Automação Inteligente de Agendamentos e Gestão de Transportes de Veículos</strong><br>
-  Integrado com <strong>WhatsApp Web</strong>, <strong>Google Sheets API v4</strong> e <strong>Google Gemini AI</strong>.
+  <strong>Automação Inteligente de Agendamentos e Gestão Logística de Guinchos</strong><br>
+  Integrado com <strong>WhatsApp Web</strong>, <strong>Google Sheets API v4</strong>, <strong>Google Gemini AI</strong> e <strong>Painel de Controle Corporativo</strong>.
 </p>
 
 <p align="center">
   <img src="https://img.shields.io/badge/Node.js-18+-339933?style=flat-square&logo=nodedotjs&logoColor=white" alt="Node.js">
-  <img src="https://img.shields.io/badge/Google%20Gemini-3.6%20Flash-4285F4?style=flat-square&logo=google&logoColor=white" alt="Gemini">
+  <img src="https://img.shields.io/badge/Google%20Gemini-Flash-4285F4?style=flat-square&logo=google&logoColor=white" alt="Gemini">
   <img src="https://img.shields.io/badge/Google%20Sheets-API%20v4-34A853?style=flat-square&logo=googlesheets&logoColor=white" alt="Google Sheets">
   <img src="https://img.shields.io/badge/WhatsApp-whatsapp--web.js-25D366?style=flat-square&logo=whatsapp&logoColor=white" alt="WhatsApp">
+  <img src="https://img.shields.io/badge/Dashboard-shadcn%2Fui%20Style-09090b?style=flat-square" alt="Dashboard">
+  <img src="https://img.shields.io/badge/Tests-7%2F7%20Passed-10b981?style=flat-square" alt="Tests">
   <img src="https://img.shields.io/badge/License-MIT-blue?style=flat-square" alt="License">
 </p>
 
@@ -18,103 +20,102 @@
 ## 📑 Sumário
 
 - [Visão Geral](#-visão-geral)
-- [O Que o Código Faz (Fluxo Operacional)](#-o-que-o-código-faz-fluxo-operacional)
-- [Modelo de Linguagem Utilizado (LLM)](#-modelo-de-linguagem-utilizado-llm)
+- [Painel de Controle Web (Dashboard)](#-painel-de-controle-web-dashboard)
+- [Fluxo Operacional](#-fluxo-operacional)
+- [Inteligência Artificial & Classificação](#-inteligência-artificial--classificação)
 - [Regras de Negócio e Concessionárias](#-regras-de-negócio-e-concessionárias)
 - [Estrutura da Planilha Google Sheets](#-estrutura-da-planilha-google-sheets)
-- [Otimizações e Resiliência (Cotas da API)](#-otimizações-e-resiliência-cotas-da-api)
-- [Estrutura de Diretórios](#-estrutura-de-diretórios)
+- [Rotina Diária Automática (07:00 às 19:00)](#-rotina-diária-automática-0700-às-1900)
+- [Estrutura do Projeto](#-estrutura-do-projeto)
 - [Instalação e Configuração](#-instalação-e-configuração)
-- [Execução e Atalhos (Segundo Plano)](#-execução-e-atalhos-segundo-plano)
+- [Execução e Atalhos do Sistema](#-execução-e-atalhos-do-sistema)
+- [Testes Automatizados](#-testes-automatizados)
 - [Segurança de Dados](#-segurança-de-dados)
 
 ---
 
 ## 📌 Visão Geral
 
-O **WhatsApp Guincho Bot** atua como operador autônomo conectado a grupos operacionais de logística e remoção de veículos. Ele monitora solicitações de transporte enviadas pelas concessionárias, interpreta mensagens estruturadas ou informais (com auxílio de Inteligência Artificial), evita duplicidades, formata e preenche automaticamente a planilha oficial de controle no Google Sheets, além de responder no grupo confirmando o agendamento.
+O **WhatsApp Guincho Bot** atua como operador autônomo conectado aos grupos operacionais de logística e remoção de veículos do **Grupo Hazul**. Ele monitora solicitações de transporte enviadas pelas concessionárias, interpreta mensagens estruturadas ou informais com Inteligência Artificial, evita duplicidades, preenche automaticamente a planilha oficial de faturamento no Google Sheets e responde no grupo confirmando o agendamento.
 
 ```mermaid
 flowchart LR
-    A[Mensagem no WhatsApp] --> B{Parser Regex}
-    B -- Padrão Reconhecido --> D[Deduplicação & Validação]
-    B -- Não Padronizado --> C[Google Gemini 3.6 Flash]
-    C --> D
-    D --> E[Google Sheets API v4]
-    E --> F[Confirmação no WhatsApp]
+    A[Mensagem no WhatsApp] --> B{Pré-filtro de Ruído}
+    B -- Conversa / Ruído --> X[Descarte / Log]
+    B -- Texto de Agendamento --> C{Parser Regex}
+    C -- Formato Padrão --> E[Validação de Duplicidade]
+    C -- Texto Informal --> D[Google Gemini AI]
+    D --> E
+    E -- Já Cadastrado --> Y[Prevenção de Duplicado]
+    E -- Novo Agendamento --> F[Google Sheets API v4]
+    F --> G[Confirmação no WhatsApp]
+    F --> H[Auditoria no Dashboard]
 ```
 
 ---
 
-## 📋 O Que o Código Faz (Fluxo Operacional)
+## 🎛️ Painel de Controle Web (Dashboard)
+
+O sistema conta com um **Dashboard Corporativo completo** acessível via navegador em `http://localhost:3000`, desenvolvido com padrões de design modernos (*shadcn/ui*, *Linear* e *Vercel*):
+
+- **Barra Superior Corporativa**: Logotipo oficial do Grupo Hazul, indicador de status de conexão com telemetria de latência (`ping ms`) e alternador nativo de tema **Light / Dark Mode** com persistência local.
+- **📊 Aba 1: Visão Geral**:
+  - Telemetria de consumo de memória RAM do Node.js (RSS e Heap), Uptime formatado, contagem de mensagens processadas, agendamentos válidos e ciclo ativo.
+  - Tabela de auditoria em tempo real com filtros por status (*Todos*, *Agendamentos*, *Duplicados*, *Descartados*), pesquisa instantânea e modal de detalhes com os dados extraídos e a mensagem original.
+- **⚙️ Aba 2: Comandos**:
+  - Botões para Iniciar e Parar o processo do bot com notificações de feedback instantâneas.
+  - Releitura sob demanda (*Re-scan*) por ciclo de faturamento ou por data personalizada selecionada em calendário.
+  - Teste de conexão e sincronização com Google Sheets.
+  - Limpeza de logs do terminal.
+- **💻 Aba 3: Logs / Terminal**:
+  - Console em tempo real com window dots e tema de alto contraste.
+  - Color-coding sintático (`[INFO]`, `[WARN]`, `[ERRO]`, `[OK]`).
+  - Filtros rápidos de severidade, busca textual interna, botão para copiar logs com 1 clique e chave de *Auto-scroll*.
+- **🔧 Aba 4: Configurações**:
+  - Exibição de variáveis de ambiente, status das credenciais (WhatsApp, Sheets, Gemini) com mascaramento seguro, horários de expediente e ambiente de execução.
+
+---
+
+## 📋 Fluxo Operacional
 
 1. **Conexão e Sessão Persistente**:
-   - Conecta ao WhatsApp Web via `whatsapp-web.js` com Puppeteer/Chromium headless.
-   - Utiliza autenticação persistente (`LocalAuth`), dispensando leitura de QR Code após a primeira conexão.
+   - Conecta ao WhatsApp Web via `whatsapp-web.js` com Chromium headless.
+   - Utiliza autenticação persistente (`LocalAuth` em `.wwebjs_auth/`), dispensando QR Code após o primeiro pareamento.
 
-2. **Cálculo Automático do Ciclo de Faturamento**:
-   - As concessionárias operam no ciclo financeiro do **dia 24 do mês anterior até o dia 23 do mês atual**.
-   - Exemplos:
+2. **Cálculo Dinâmico do Ciclo de Faturamento**:
+   - As concessionárias operam no ciclo contábil do **dia 24 do mês anterior até o dia 23 do mês atual**:
      - Viagens de **24/08 a 23/09** $\rightarrow$ Aba **`SETEMBRO 2026`**
      - Viagens de **24/09 a 23/10** $\rightarrow$ Aba **`OUTUBRO 2026`**
      - Viagens de **24/10 a 23/11** $\rightarrow$ Aba **`NOVEMBRO 2026`**
-   - O bot localiza dinamicamente a aba correspondente na planilha.
+   - O bot cria ou seleciona automaticamente a aba correta daquele período.
 
-3. **Varredura Ativa do Histórico ao Iniciar**:
-   - Realiza uma rolagem ativa no chat do WhatsApp Web para recuperar todas as mensagens postadas desde o início do ciclo vigente.
-   - Analisa cada agendamento histórico, compara com as linhas existentes da planilha e cadastra qualquer viagem pendente.
-   - Respostas no grupo são desativadas durante a varredura inicial para evitar mensagens desnecessárias.
+3. **Varredura e Releitura de Histórico**:
+   - Ao iniciar (ou via botão de releitura no Painel), o bot percorre as mensagens do grupo desde o início do ciclo vigente.
+   - Compara cada agendamento com as linhas já cadastradas e insere apenas os pendentes, garantindo zero duplicidades.
 
-4. **Interpretação Híbrida de Mensagens**:
-   - **Camada 1 (Parser Regex)**: Extrai dados imediatos em mensagens formatadas (`VEICULO`, `COR`, `CHASSI/PLACA`, `DE / COLETA`, `PARA / ENTREGA`, `DEPARTAMENTO`, `AGENDAR PARA`), tolerando ausência de pontuação ou formatações de negrito/itálico do WhatsApp.
-   - **Camada 2 (Google Gemini AI)**: Acionado automaticamente caso o texto seja livre ou informal, retornando os campos estruturados em JSON.
-
-5. **Gravação e Formatação Padronizada no Google Sheets**:
+4. **Gravação Formatada no Google Sheets**:
    - Preenche exclusivamente as colunas operacionais (**A até H**).
    - Preserva intactas as fórmulas financeiras (Coluna K `=I{row}/J{row}`) e o status da Coluna L (`" NÃO FATURADO"`).
-   - Aplica formatação visual: Coluna A em verde suave (`#99cc00`), centralizado, com bordas pretas nas colunas operacionais.
-
-6. **Notificação em Tempo Real**:
-   - Para novas mensagens recebidas no grupo, envia confirmação formal contendo modelo, chassi/placa, origem, destino e faturamento.
+   - Aplica estilização corporativa: Coluna A em verde suave (`#99cc00`), alinhamento centralizado e bordas pretas padronizadas.
 
 ---
 
-## 🤖 Modelo de Linguagem Utilizado (LLM)
+## 🤖 Inteligência Artificial & Classificação
 
-O sistema utiliza a biblioteca oficial do Google: **`@google/genai`**.
+O sistema utiliza a biblioteca oficial do Google **`@google/genai`**:
 
-- **Modelo Primário**: `gemini-3.6-flash`
-- **Modelo de Contingência (Fallback)**: `gemini-3.5-flash`
-- **Modo de Saída**: `responseMimeType: 'application/json'` com Schema determinístico via `Type.OBJECT`.
-- **Temperatura**: Baixa (determinística) para garantir fidelidade absoluta em chassis, placas e nomes de responsáveis.
-
-### Esquema do Objeto JSON Processado:
-```json
-{
-  "isAgendamento": true,
-  "veiculo": "TIGGO 7 SPORT",
-  "cor": "CINZA ESCURO",
-  "chassiPlaca": "95PEFL31DVB099954",
-  "freioEletronico": "NÃO",
-  "departamento": "NOVOS",
-  "veiculoImobilizado": "NÃO",
-  "origem": "MOGI MIRIM",
-  "responsavelEntrega": "FABIANA",
-  "destino": "XIAN SAO JOAO DA BOA VISTA",
-  "responsavelRecebimento": "ADRIANO",
-  "transporte": "PLATAFORMA",
-  "agendarPara": "31/08/2026",
-  "faturarPara": "XIAN SJBV"
-}
-```
+- **Modelo**: `gemini-1.5-flash` (ou `gemini-3.6-flash`)
+- **Pré-Filtros de Ruído**: Mensagens como *"guincho à disposição"*, *"já carregou?"*, *"agendado 17/09"* ou saudações são filtradas de imediato, economizando chamadas de API e eliminando falsos positivos.
+- **Extração Estruturada**: Saída garantida em formato JSON determinístico com campos estruturados:
+  - `veiculo`, `cor`, `chassiPlaca`, `departamento`, `origem`, `destino`, `faturarPara`, `agendarPara`, `transporte`.
 
 ---
 
 ## 🏢 Regras de Negócio e Concessionárias
 
-Quando o campo de faturamento não for explicitamente declarado na mensagem, o bot resolve a concessionária responsável pela Nota Fiscal através de mapeamento geográfico e operacional:
+Quando o faturamento não estiver explicitado na mensagem, o bot aplica regras de roteamento geográfico e operacional para definir a concessionária responsável pela Nota Fiscal:
 
-| Concessionária / Entidade | Palavras-Chave de Mapeamento |
+| Concessionária / Unidade | Palavras-Chave de Mapeamento |
 | :--- | :--- |
 | **KENTO MM** | Kento Mogi Mirim, Toyota Mogi Mirim |
 | **KENTO SJBV** | Kento São João da Boa Vista, Toyota São João |
@@ -122,91 +123,98 @@ Quando o campo de faturamento não for explicitamente declarado na mensagem, o b
 | **XIAN SJBV** | Xian São João da Boa Vista, Caoa Chery São João |
 | **HONDA MM** | Honda Mogi Mirim, Dueto Honda, Loja Honda Kodyve |
 | **HYMAX MG** | Hymax Poços de Caldas, Hymax Pouso Alegre, Sul de Minas |
-| **CODIVE CPS / HZ CAMPINAS**| Codive Campinas, Hazul Campinas |
+| **CODIVE CPS / HZ CAMPINAS** | Codive Campinas, Hazul Campinas |
 | **HAZUL ITAPIRA** | Hazul Itapira |
-| **50% HYMAX - 50% CODIVE** | Transferências diretas entre Hymax e Codive |
+| **50% HYMAX - 50% CODIVE** | Transferências mútuas entre Hymax e Codive |
 
 ---
 
 ## 📊 Estrutura da Planilha Google Sheets
 
-A planilha corporativa segue o padrão **"CONTROLE DE TRANSPORTE CEGONHA E PLATAFORMA"**:
+Padrão oficial **"CONTROLE DE TRANSPORTE CEGONHA E PLATAFORMA"**:
 
 | Coluna | Cabeçalho | Gerenciado Por | Descrição / Formato |
 | :---: | :--- | :---: | :--- |
-| **A** | `DATA` | **Bot** | Fundo verde suave (`#99cc00`), centralizado, `dd/MM/yyyy` |
+| **A** | `DATA` | **Bot** | Fundo verde (`#99cc00`), centralizado, `dd/MM/yyyy` |
 | **B** | `DEPARTAMENTO` | **Bot** | `NOVOS`, `SEMI NOVOS`, `FUNILARIA`, `MECANICA` |
-| **C** | `CARRO` | **Bot** | Modelo do veículo (ex.: `TIGGO 7 PRO`) |
+| **C** | `CARRO` | **Bot** | Modelo do veículo (ex.: `TIGGO 7 SPORT`) |
 | **D** | `PLACAS/ CHASSIS` | **Bot** | Chassi ou placa do automóvel |
-| **E** | `LOCAL DE COLETA` | **Bot** | Endereço ou concessionária de origem |
-| **F** | `LOCAL DE ENTREGA` | **Bot** | Endereço ou concessionária de destino |
+| **E** | `LOCAL DE COLETA` | **Bot** | Concessionária ou endereço de origem |
+| **F** | `LOCAL DE ENTREGA` | **Bot** | Concessionária ou endereço de destino |
 | **G** | `VEICULO TRANSPORTE`| **Bot** | `PLATAFORMA` ou `CEGONHA` |
 | **H** | `NOTA FISCAL` | **Bot** | Concessionária faturada |
-| **I** | `CUSTO DA VIAGEM` | *Operação* | Lançamento manual do valor total da viagem (R$) |
-| **J** | `VEICULOS POR VIAGEM` | *Operação* | Quantidade de carros transportados na viagem |
-| **K** | `CUSTO UNITARIO POR VIAGEM` | *Fórmula* | Fórmula `=I{row}/J{row}` mantida intacta pelo bot |
+| **I** | `CUSTO DA VIAGEM` | *Operação* | Valor total da viagem (lançamento financeiro manual) |
+| **J** | `VEICULOS POR VIAGEM` | *Operação* | Quantidade de veículos na mesma viagem |
+| **K** | `CUSTO UNITARIO` | *Fórmula* | Fórmula `=I{row}/J{row}` mantida intacta pelo bot |
 | **L** | `Faturado/Não Faturado` | *Status* | Valor fixo `" NÃO FATURADO"` em azul escuro e negrito |
 
 ---
 
-## ⚡ Otimizações e Resiliência (Cotas da API)
+## ⏰ Rotina Diária Automática (07:00 às 19:00)
 
-Para operar de forma contínua sem interrupções por limites do Google Sheets (cota padrão de 60 leituras/min):
+O bot está integrado ao Agendador de Tarefas do Windows para operação 100% autônoma:
 
-- **Cache de Metadados**: Mapeamento de abas e IDs de ciclo carregados uma única vez na inicialização.
-- **Cache de Linhas em Memória (TTL 60s)**: Verificações de duplicidade consultam a memória local e atualizam em tempo real a cada novo cadastro.
-- **Pacing na Varredura Histórica**: Intervalo de segurança (600ms) entre mensagens do histórico para estabilidade de rede e cotas de requisição.
-- **Backoff Exponencial**: Retentativas automáticas em chamadas de rede com oscilação transitória.
+1. **Início Automático às 07:00**:
+   - Acorda o computador (`WakeToRun`) e inicializa o processo silenciosamente em segundo plano.
+   - Conecta ao WhatsApp e faz a leitura de novos agendamentos.
+2. **Encerramento Seguro às 19:00 com Janela de 5 Minutos**:
+   - O processo do bot é encerrado com segurança.
+   - Uma **janela visual de alerta** aparece na tela com contagem regressiva de **5 minutos (300 segundos)** informando o desligamento.
+   - Se o usuário estiver trabalhando no computador e clicar em **"Cancelar Desligamento"**, o computador continua ligado. Caso contrário, desliga automaticamente após os 5 minutos.
 
 ---
 
-## 📁 Estrutura de Diretórios
+## 📁 Estrutura do Projeto
 
 ```text
 whatsapp-guincho-bot/
-├── .env.example               # Modelo de variáveis de ambiente
-├── .gitignore                 # Exclusão estrita de chaves, logs e sessões
-├── package.json               # Dependências e scripts de execução
-├── README.md                  # Documentação completa do projeto
+├── .env.example                  # Modelo de variáveis de ambiente
+├── .gitignore                    # Regras estritas de exclusão de chaves e sessões
+├── package.json                  # Dependências e scripts npm
+├── README.md                     # Documentação completa do repositório
 │
-├── iniciar-painel.bat          # Inicia o Painel de Controle Web (Dashboard) e abre no navegador
-├── iniciar-bot.bat            # Inicia o bot com janela de terminal visível
-├── iniciar-segundo-plano.vbs  # Inicia o bot em segundo plano (sem janela)
-├── parar-bot.bat              # Encerra o processo do bot com segurança
-├── ver-status.bat             # Verifica se o bot está ativo e exibe os últimos logs
-├── configurar-rotina-diaria.bat # Configura o Agendador de Tarefas do Windows (07:00 às 19:00)
-├── testar-aviso-desligamento.bat # Testa a janela visual de 5 minutos antes do desligamento
-├── enviar-para-github.bat     # Sincroniza e envia código para o GitHub
+├── iniciar-painel.bat             # Abre o Painel de Controle Web (http://localhost:3000)
+├── iniciar-painel.vbs             # Inicializador silencioso do painel
+├── iniciar-bot.bat               # Inicia o bot com janela de terminal visível
+├── iniciar-segundo-plano.vbs     # Inicia o bot silenciosamente em background
+├── parar-bot.bat                 # Finaliza com segurança os processos ativos
+├── ver-status.bat                # Exibe o status operacional do bot e logs recentes
+├── configurar-rotina-diaria.bat    # Registra as rotinas das 07:00 e 19:00 no Windows
+├── testar-aviso-desligamento.bat # Testa a janela de contagem regressiva de 5 minutos
+├── enviar-para-github.bat        # Script de sincronização automática com o GitHub
 │
 ├── scripts/
-│   ├── aviso-desligamento.ps1  # Diálogo visual WPF com contagem regressiva de 5 minutos
-│   └── configurar-agendamento.ps1 # Registro das tarefas automáticas no Windows Task Scheduler
+│   ├── aviso-desligamento.ps1     # Interface gráfica WPF com timer regressivo de 5 minutos
+│   ├── configurar-agendamento.ps1 # Configuração do Agendador de Tarefas do Windows
+│   └── remover-agendamento.ps1    # Utilitário para desativar agendamento do Windows
 │
 ├── test/
-│   └── test-ai-classification.js # Bateria automatizada de testes de classificação e pré-filtros
+│   └── test-ai-classification.js # Suíte de 7 testes de classificação da IA e pré-filtros
 │
 └── src/
-    ├── index.js               # Entry point do sistema e ciclo de vida
-    ├── whatsapp.js            # Cliente WhatsApp Web, listeners e histórico
-    ├── parser.js              # Parser Regex e resolução de concessionárias
-    ├── gemini.js              # Integração com Google Gemini 3.6 Flash
-    ├── whatsapp.js            # Cliente WhatsApp Web, listeners e varredura histórica
-    ├── parser.js              # Parser Regex, pré-filtros de ruído e concessionárias
-    ├── gemini.js              # Classificador com Google Gemini AI e fallback resiliente
-    ├── sheets.js              # Integração Google Sheets v4, cache e layout
-    ├── history.js             # Módulo de persistência e auditoria de mensagens lidas
-    ├── logger.js              # Logs coloridos e gravação contínua em arquivo
-    ├── distance.js            # Módulo de cálculo de rotas e distâncias
-    ├── start-bg.js            # Inicializador desacoplado de segundo plano
-    ├── status.js              # Verificador de processos ativos via WMIC
-    ├── status.js              # Verificador de processos ativos
-    ├── stop.js                # Finalizador de processos do bot
-    ├── find-group.js          # Utilitário interativo para busca de grupos
-    └── list-groups.js         # Listagem de IDs de grupos da conta
-    └── dashboard/             # Painel de Controle Web
-        ├── server.js          # Servidor HTTP nativo Node.js com endpoints de API
-        ├── start-dashboard.js # Utilitário que inicia o servidor e abre o navegador
-        └── public/            # Interface visual (HTML, CSS e JavaScript moderno)
+    ├── index.js                  # Entry point principal e ciclo de vida do bot
+    ├── whatsapp.js               # Conexão WhatsApp Web, listeners e varredura histórica
+    ├── parser.js                 # Parser Regex, filtros de ruído e mapeamento de unidades
+    ├── gemini.js                 # Cliente oficial Google Gemini com fallback
+    ├── sheets.js                 # Integração Google Sheets v4, cache e formatação
+    ├── history.js                # Banco local de auditoria de mensagens lidas
+    ├── logger.js                 # Registrador de logs formatados no terminal e arquivo
+    ├── distance.js               # Utilitário de cálculo de distâncias entre unidades
+    ├── start-bg.js               # Inicializador desacoplado de segundo plano
+    ├── status.js                 # Verificador de processos ativos
+    ├── stop.js                   # Procedimento seguro de finalização
+    ├── find-group.js             # Busca interativa de IDs de grupos
+    ├── list-groups.js            # Listagem de todos os grupos da conta
+    └── dashboard/                # Painel de Controle Web
+        ├── server.js             # Servidor HTTP nativo com API REST
+        ├── start-dashboard.js    # Inicializador do painel com abertura no navegador
+        ├── start-bg-dashboard.js # Inicializador do painel em segundo plano
+        └── public/               # Interface visual (HTML, CSS corporativo e JS)
+            ├── index.html        # Estrutura modular em 4 abas
+            ├── style.css         # Design system minimalista com Dark/Light Mode
+            ├── app.js            # Lógica reativa, polling e manipulação do DOM
+            └── assets/
+                └── logo.png      # Logotipo oficial do Grupo Hazul
 ```
 
 ---
@@ -214,9 +222,9 @@ whatsapp-guincho-bot/
 ## 🚀 Instalação e Configuração
 
 ### Pré-requisitos
-- [Node.js](https://nodejs.org/) versão 18 ou superior.
-- Credenciais da Google Cloud Platform com a **Google Sheets API** ativada e Service Account criada.
-- Chave de API do [Google AI Studio](https://aistudio.google.com/).
+- [Node.js](https://nodejs.org/) versão 18 ou superior instalado.
+- Conta Google Cloud com a **Google Sheets API** ativada e Service Account com arquivo de credencial JSON.
+- Chave de API gratuita do [Google AI Studio](https://aistudio.google.com/).
 
 ### 1. Clonar o Repositório
 ```bash
@@ -229,97 +237,66 @@ cd whatsapp-guincho-bot
 npm install
 ```
 
-### 3. Configurar Variáveis de Ambiente (`.env`)
-Copie o arquivo `.env.example` para `.env`:
+### 3. Configurar Variáveis de Ambiente
+Copie o modelo de ambiente e insira suas credenciais:
 ```bash
-cp .env.example .env
+copy .env.example .env
 ```
-Edite o arquivo `.env` com suas credenciais:
+Campos no `.env`:
 ```env
-# ID do grupo no WhatsApp (exemplo: 120363038885543019@g.us)
-WHATSAPP_GROUP_ID=SEU_GROUP_ID_AQUI
-
-# ID da Planilha do Google Sheets (extraído da URL)
-GOOGLE_SHEET_ID=SEU_SPREADSHEET_ID_AQUI
-
-# Nome padrão da aba de agendamentos
+WHATSAPP_GROUP_ID=120363038885543019@g.us
+GOOGLE_SHEET_ID=1abc...XYZ
 GOOGLE_SHEET_TAB=Agendamentos
-
-# Caminho da credencial da Service Account do Google
 GOOGLE_CREDENTIALS_PATH=./credentials.json
-
-# Chave de API do Google Gemini
-GEMINI_API_KEY=SUA_CHAVE_GEMINI_AQUI
-
-# Configuração de frete (opcional)
-VALOR_POR_KM=7.00
-CALCULAR_IDA_E_VOLTA=true
+GEMINI_API_KEY=AIzaSy...
+GEMINI_MODEL=gemini-1.5-flash
+DASHBOARD_PORT=3000
 ```
 
 ### 4. Compartilhar a Planilha
-Abra a sua planilha no Google Sheets, clique em **Compartilhar** e adicione o e-mail da sua Service Account (encontrado dentro do arquivo `credentials.json`, campo `client_email`) como **Editor**.
+Abra a sua planilha no Google Sheets, clique em **Compartilhar** e adicione o e-mail da sua Service Account (encontrado em `credentials.json`, campo `client_email`) com a permissão de **Editor**.
 
 ---
 
-## 🖥️ Execução e Atalhos (Segundo Plano)
-## 🎛️ Painel de Controle Web (Dashboard)
+## 🖥️ Execução e Atalhos do Sistema
 
-O projeto conta com rotinas prontas para operação facilitada no Windows:
-O sistema inclui um **Painel de Controle completo** rodando localmente sem dependências externas adicionais:
+O sistema pode ser operado via comandos npm ou pelos atalhos na pasta da Área de Trabalho **`BOT DO WHATSAPP`**:
 
-- **Controle Central**: Inicie ou pare o robô a qualquer momento com 1 clique.
-- **Métricas em Tempo Real**: Total de mensagens lidas, agendamentos confirmados, mensagens duplicadas ignoradas e conversas/ruídos descartados.
-- **Histórico de Mensagens**: Visualize cada mensagem lida no grupo, horário, remetente, classificação e os campos extraídos pela IA. Inclui busca rápida e filtros por status.
-- **Releitura sob Demanda**: Botão para reprocessar mensagens do grupo desde o início do ciclo de faturamento ou a partir de uma data selecionada no calendário.
-- **Terminal de Logs ao Vivo**: Acompanhe o fluxo operacional com rolagem automática e atualização contínua.
-
-Para abrir o Painel:
-- Duplo clique no atalho da Área de Trabalho **"Painel do Bot"** ou execute `iniciar-painel.bat`
-- O navegador abrirá automaticamente em `http://localhost:3000`
+| Ação | Atalho no Windows | Comando npm | Descrição |
+| :--- | :--- | :--- | :--- |
+| **Painel de Controle** | `Painel do Bot.lnk` | `npm run dashboard` | Abre a interface web em `http://localhost:3000` |
+| **Iniciar (Segundo Plano)** | `Iniciar Bot (Segundo Plano).lnk` | `npm run start:bg` | Roda silenciosamente sem ocupar janela |
+| **Iniciar (Terminal Visível)**| `Iniciar Bot Guincho.lnk` | `npm start` | Abre janela com logs em tempo real |
+| **Verificar Status** | `Ver Status do Bot.lnk` | `npm run status` | Informa se o bot está rodando e exibe logs |
+| **Parar Bot** | `Parar Bot.lnk` | `npm run stop` | Finaliza com segurança os processos ativos |
+| **Testar Suíte da IA** | — | `npm test` | Executa a bateria de 7 testes de classificação |
+| **Atualizar GitHub** | `Enviar para o GitHub.lnk` | — | Sincroniza e envia alterações para o repositório |
 
 ---
 
-## ⏰ Rotina Automática Diária (07:00 às 19:00)
+## 🧪 Testes Automatizados
 
-O sistema opera de forma 100% autônoma através do Agendador de Tarefas do Windows:
+O repositório inclui uma suíte automatizada de validação da inteligência artificial e dos pré-filtros de mensagens:
 
-1. **Início Automático às 07:00**:
-   - A tarefa acorda o computador da suspensão (`WakeToRun`) e inicia o bot silenciosamente em segundo plano.
-   - O robô conecta ao WhatsApp e executa a sincronização do ciclo vigente.
+```bash
+npm test
+```
 
-2. **Encerramento Seguro às 19:00 com Janela de 5 Minutos**:
-   - O processo do bot é finalizado com segurança.
-   - Uma **janela visual de alerta** aparece na tela com contagem regressiva de **5 minutos (300 segundos)** informando o encerramento do expediente.
-   - Se você estiver usando o computador e clicar em **"Cancelar Desligamento"**, o computador permanecerá ligado normalmente.
-   - Se ninguém responder após 5 minutos, o computador entra automaticamente em modo de suspensão/desligamento econômico.
-
----
-
-## 🖥️ Execução e Atalhos
-
-Todos os atalhos essenciais estão disponíveis na pasta da Área de Trabalho **`BOT DO WHATSAPP`**:
-
-| Ação | Como Executar | Descrição |
-| :--- | :--- | :--- |
-| **Iniciar (Visível)** | Duplo clique em `iniciar-bot.bat` ou `npm start` | Abre o terminal e exibe os logs em tempo real |
-| **Iniciar (Segundo Plano)** | Duplo clique em `iniciar-segundo-plano.vbs` ou `npm run start:bg` | Roda silenciosamente sem ocupar janela no Windows |
-| **Verificar Status** | Duplo clique em `ver-status.bat` ou `npm run status` | Informa se o bot está rodando e exibe os 15 logs mais recentes |
-| **Parar Bot** | Duplo clique em `parar-bot.bat` ou `npm run stop` | Finaliza com segurança os processos ativos |
-| **Atualizar GitHub** | Duplo clique em `enviar-para-github.bat` | Faz o commit e envia todas as alterações para o repositório |
-| **Painel de Controle** | Atalho `Painel do Bot` ou `iniciar-painel.bat` | Abre a interface gráfica de controle e histórico |
-| **Iniciar (Visível)** | Atalho `Iniciar Bot Guincho` ou `iniciar-bot.bat` | Abre o terminal e exibe os logs em tempo real |
-| **Iniciar (Segundo Plano)** | Atalho `Iniciar Bot (Segundo Plano)` ou `iniciar-segundo-plano.vbs` | Roda silenciosamente em background |
-| **Verificar Status** | Atalho `Ver Status do Bot` ou `ver-status.bat` | Informa status e exibe os logs mais recentes |
-| **Parar Bot** | Atalho `Parar Bot` ou `parar-bot.bat` | Finaliza com segurança os processos ativos |
-| **Testar Aviso (5 min)** | Duplo clique em `testar-aviso-desligamento.bat` | Testa a janela visual de confirmação de desligamento |
-| **Atualizar GitHub** | Atalho `Enviar para o GitHub` ou `enviar-para-github.bat` | Faz o commit e envia todas as alterações para o repositório |
+A suíte testa 7 cenários operacionais reais:
+1. Aviso de guincho à disposição (ruído operacional descartado com sucesso).
+2. Confirmação operacional curta (descartada).
+3. Confirmação de agendamento prévio (descartada).
+4. Dúvida operacional sem veículo (descartada via Gemini).
+5. Mensagem de cortesia/agradecimento (descartada via Gemini).
+6. Agendamento legítimo formulário padrão (aprovado via Regex).
+7. Agendamento legítimo texto corrido (aprovado via Gemini).
 
 ---
 
 ## 🔒 Segurança de Dados
 
-O arquivo `.gitignore` foi configurado rigorosamente para garantir que informações sensíveis nunca sejam enviadas ao GitHub:
-- `.env` e chaves de API.
-- Arquivos de credenciais de Service Account (`credentials*.json`, `*.pem`, `*.key`).
+O arquivo `.gitignore` protege estritamente as credenciais e dados operacionais da empresa:
+- Variáveis de ambiente (`.env`).
+- Credenciais da Service Account Google (`credentials*.json`, `*.pem`, `*.key`).
 - Sessões autenticadas do WhatsApp (`.wwebjs_auth/`, `.wwebjs_cache/`).
-- Logs locais de mensagens e arquivos de PID de processos (`logs/`, `.bot.pid`).
+- Logs locais e arquivos de controle de PID (`logs/`, `.bot.pid`, `.dashboard.pid`).

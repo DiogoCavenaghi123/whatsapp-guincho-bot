@@ -8,6 +8,9 @@
     "start:bg": "node src/start-bg.js",
     "stop": "node src/stop.js",
     "status": "node src/status.js",
+    "dashboard": "node src/dashboard/start-dashboard.js",
+    "dashboard:bg": "node src/dashboard/start-bg-dashboard.js",
+    "test": "node test/test-ai-classification.js",
     "groups": "node src/list-groups.js",
     "find-group": "node src/find-group.js"
   },
@@ -16,9 +19,15 @@
     "bot",
     "google-sheets",
     "guincho",
-    "agendamento"
+    "agendamento",
+    "gemini-ai",
+    "dashboard"
   ],
-  "author": "",
+  "author": "Grupo Hazul",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/DiogoCavenaghi123/whatsapp-guincho-bot.git"
+  },
   "license": "MIT",
   "dependencies": {
     "@google/genai": "^2.22.0",
