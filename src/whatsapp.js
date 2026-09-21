@@ -187,9 +187,19 @@ async function scanGroupMessages(customCutoffDate = null) {
   isScanning = true;
 
   try {
-    // Se não especificada, calcula o início do ciclo atual (dia 24 do mês correspondente)
+    // Se especificada como string, converte preservando fuso horário local
     let cutoffDate = customCutoffDate;
-    if (!cutoffDate) {
+    if (typeof cutoffDate === 'string') {
+      const parts = cutoffDate.split(/[-/]/).map(Number);
+      if (parts.length === 3 && parts[0] > 1000) {
+        cutoffDate = new Date(parts[0], parts[1] - 1, parts[2], 0, 0, 0);
+      } else {
+        cutoffDate = new Date(cutoffDate);
+      }
+    }
+
+    // Se não especificada ou inválida, calcula o início do ciclo atual (dia 24 do mês correspondente)
+    if (!cutoffDate || isNaN(cutoffDate.getTime())) {
       const now = new Date();
       if (now.getDate() >= 24) {
         cutoffDate = new Date(now.getFullYear(), now.getMonth(), 24, 0, 0, 0);

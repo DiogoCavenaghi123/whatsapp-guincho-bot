@@ -19,6 +19,9 @@ yarn-error.log*
 *.log
 logs/
 .bot.pid
+.dashboard.pid
+.bot.cmd
+*.pid
 
 # Arquivos de sistema
 .DS_Store

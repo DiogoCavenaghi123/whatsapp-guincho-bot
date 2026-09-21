@@ -163,10 +163,11 @@ function renderHistoryTable(data) {
 async function fetchLogs() {
   try {
     const res = await fetch('/api/logs');
+    if (!res.ok) return;
     const data = await res.json();
     if (data.lines && data.lines.length > 0) {
       logsContent.textContent = data.lines.join('\n');
-    } else {
+    } else if (!logsContent.textContent) {
       logsContent.textContent = 'Nenhum log registrado ainda.';
     }
 
@@ -174,7 +175,9 @@ async function fetchLogs() {
       logsTerminal.scrollTop = logsTerminal.scrollHeight;
     }
   } catch (e) {
-    logsContent.textContent = `Erro ao carregar logs: ${e.message}`;
+    if (!logsContent.textContent || logsContent.textContent.includes('Aguardando')) {
+      logsContent.textContent = 'Aguardando conexão com o servidor do painel...';
+    }
   }
 }
 

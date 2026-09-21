@@ -58,24 +58,33 @@ function getBotProcessInfo() {
   return { running: false, pid: null };
 }
 
+process.on('uncaughtException', (err) => {
+  console.error('[Dashboard Exception]:', err.stack || err.message);
+});
+
+process.on('unhandledRejection', (reason) => {
+  console.error('[Dashboard Rejection]:', reason?.stack || reason);
+});
+
 /**
  * Roteamento de Requisições
  */
 const server = http.createServer(async (req, res) => {
-  const reqUrl = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
-  const pathname = reqUrl.pathname;
-  const parsedUrl = { query: Object.fromEntries(reqUrl.searchParams.entries()) };
+  try {
+    const reqUrl = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+    const pathname = reqUrl.pathname;
+    const parsedUrl = { query: Object.fromEntries(reqUrl.searchParams.entries()) };
 
-  // Habilita CORS para requisições locais
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    // Habilita CORS para requisições locais
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
-  if (req.method === 'OPTIONS') {
-    res.writeHead(204);
-    res.end();
-    return;
-  }
+    if (req.method === 'OPTIONS') {
+      res.writeHead(204);
+      res.end();
+      return;
+    }
 
   // ── API: STATUS ────────────────────────────────────────────
   if (pathname === '/api/status' && req.method === 'GET') {
@@ -238,8 +247,25 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  res.writeHead(404, { 'Content-Type': 'text/plain' });
-  res.end('Página não encontrada');
+    res.writeHead(404, { 'Content-Type': 'text/plain' });
+    res.end('Página não encontrada');
+  } catch (err) {
+    console.error('[Dashboard Request Error]:', err);
+    try {
+      if (!res.headersSent) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: false, message: err.message }));
+      }
+    } catch (_) {}
+  }
+});
+
+server.on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(`[Dashboard] A porta ${PORT} já está em uso.`);
+  } else {
+    console.error('[Dashboard Error]:', err);
+  }
 });
 
 server.listen(PORT, '127.0.0.1', () => {

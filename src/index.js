@@ -67,27 +67,39 @@ async function main() {
   await client.initialize();
 
   // ── Listener de Comandos IPC (ex: Releitura disparada pelo Painel) ──
-  fs.watchFile(cmdFile, { interval: 1000 }, async () => {
+  // ── Listener de Comandos IPC (Releitura disparada pelo Painel) ──
+  const processCommandFile = async () => {
     if (!fs.existsSync(cmdFile)) return;
     try {
       const content = fs.readFileSync(cmdFile, 'utf8').trim();
-      fs.unlinkSync(cmdFile);
+      try { fs.unlinkSync(cmdFile); } catch (_) {}
       if (!content) return;
 
       const cmdData = JSON.parse(content);
       if (cmdData.cmd === 'rescan') {
         logger.info('Comando de RELEITURA recebido do Painel de Controle! 🔄');
-        const cutoff = cmdData.since ? new Date(cmdData.since) : null;
+        let cutoff = null;
+        if (cmdData.since) {
+          const parts = String(cmdData.since).split(/[-/]/).map(Number);
+          if (parts.length === 3 && parts[0] > 1000) {
+            cutoff = new Date(parts[0], parts[1] - 1, parts[2], 0, 0, 0);
+          } else {
+            cutoff = new Date(cmdData.since);
+          }
+        }
         await scanGroupMessages(cutoff);
       }
     } catch (e) {
       logger.debug(`Aviso no processamento do .bot.cmd: ${e.message}`);
     }
-  });
+  };
 
+  fs.watchFile(cmdFile, { interval: 1000 }, processCommandFile);
+  const cmdInterval = setInterval(processCommandFile, 1500);
 
   const cleanup = async () => {
     try {
+      clearInterval(cmdInterval);
       fs.unwatchFile(cmdFile);
       if (fs.existsSync(pidFile)) fs.unlinkSync(pidFile);
       if (fs.existsSync(cmdFile)) fs.unlinkSync(cmdFile);

@@ -187,6 +187,9 @@ whatsapp-guincho-bot/
 │
 └── src/
     ├── index.js               # Entry point do sistema e ciclo de vida
+    ├── whatsapp.js            # Cliente WhatsApp Web, listeners e histórico
+    ├── parser.js              # Parser Regex e resolução de concessionárias
+    ├── gemini.js              # Integração com Google Gemini 3.6 Flash
     ├── whatsapp.js            # Cliente WhatsApp Web, listeners e varredura histórica
     ├── parser.js              # Parser Regex, pré-filtros de ruído e concessionárias
     ├── gemini.js              # Classificador com Google Gemini AI e fallback resiliente
@@ -195,8 +198,11 @@ whatsapp-guincho-bot/
     ├── logger.js              # Logs coloridos e gravação contínua em arquivo
     ├── distance.js            # Módulo de cálculo de rotas e distâncias
     ├── start-bg.js            # Inicializador desacoplado de segundo plano
+    ├── status.js              # Verificador de processos ativos via WMIC
     ├── status.js              # Verificador de processos ativos
     ├── stop.js                # Finalizador de processos do bot
+    ├── find-group.js          # Utilitário interativo para busca de grupos
+    └── list-groups.js         # Listagem de IDs de grupos da conta
     └── dashboard/             # Painel de Controle Web
         ├── server.js          # Servidor HTTP nativo Node.js com endpoints de API
         ├── start-dashboard.js # Utilitário que inicia o servidor e abre o navegador
@@ -255,8 +261,10 @@ Abra a sua planilha no Google Sheets, clique em **Compartilhar** e adicione o e-
 
 ---
 
+## 🖥️ Execução e Atalhos (Segundo Plano)
 ## 🎛️ Painel de Controle Web (Dashboard)
 
+O projeto conta com rotinas prontas para operação facilitada no Windows:
 O sistema inclui um **Painel de Controle completo** rodando localmente sem dependências externas adicionais:
 
 - **Controle Central**: Inicie ou pare o robô a qualquer momento com 1 clique.
@@ -293,6 +301,11 @@ Todos os atalhos essenciais estão disponíveis na pasta da Área de Trabalho **
 
 | Ação | Como Executar | Descrição |
 | :--- | :--- | :--- |
+| **Iniciar (Visível)** | Duplo clique em `iniciar-bot.bat` ou `npm start` | Abre o terminal e exibe os logs em tempo real |
+| **Iniciar (Segundo Plano)** | Duplo clique em `iniciar-segundo-plano.vbs` ou `npm run start:bg` | Roda silenciosamente sem ocupar janela no Windows |
+| **Verificar Status** | Duplo clique em `ver-status.bat` ou `npm run status` | Informa se o bot está rodando e exibe os 15 logs mais recentes |
+| **Parar Bot** | Duplo clique em `parar-bot.bat` ou `npm run stop` | Finaliza com segurança os processos ativos |
+| **Atualizar GitHub** | Duplo clique em `enviar-para-github.bat` | Faz o commit e envia todas as alterações para o repositório |
 | **Painel de Controle** | Atalho `Painel do Bot` ou `iniciar-painel.bat` | Abre a interface gráfica de controle e histórico |
 | **Iniciar (Visível)** | Atalho `Iniciar Bot Guincho` ou `iniciar-bot.bat` | Abre o terminal e exibe os logs em tempo real |
 | **Iniciar (Segundo Plano)** | Atalho `Iniciar Bot (Segundo Plano)` ou `iniciar-segundo-plano.vbs` | Roda silenciosamente em background |
