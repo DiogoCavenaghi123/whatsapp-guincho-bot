@@ -1,216 +1,590 @@
 <!DOCTYPE html>
-<html lang="pt-BR">
+<html lang="pt-BR" data-theme="dark">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Painel de Controle — WhatsApp Guincho Bot</title>
-  <link rel="stylesheet" href="style.css">
+  <title>WhatsApp Guincho Bot — Painel de Controle</title>
+  <link rel="icon" type="image/png" href="assets/logo.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <div class="app-layout">
-    <!-- Top Header -->
-    <header class="top-header">
-      <div class="logo-area">
-        <span class="logo-icon">🚛</span>
-        <div>
-          <h1>WhatsApp Guincho Bot</h1>
-          <p class="subtitle">Painel de Gestão & Auditoria de Agendamentos</p>
+  <div class="app-container">
+    <!-- Top Navigation Header -->
+    <header class="navbar">
+      <div class="nav-brand">
+        <div class="logo-wrapper">
+          <img src="assets/logo.png" alt="Logo Grupo Hazul" class="brand-logo" onerror="this.style.display='none'">
+          <span class="logo-fallback">HZ</span>
+        </div>
+        <div class="brand-info">
+          <span class="brand-title">Grupo Hazul</span>
+          <span class="brand-subtitle">WhatsApp Guincho Bot</span>
         </div>
       </div>
 
-      <div class="header-actions">
-        <div id="statusBadge" class="status-badge status-offline">
-          <span class="status-dot"></span>
-          <span id="statusText">Verificando...</span>
+      <!-- Integrated Centered Navigation Tabs -->
+      <nav class="nav-tabs" id="navTabs" role="tablist">
+        <button class="nav-tab active" data-tab="overview" role="tab" aria-selected="true">
+          <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect width="7" height="9" x="3" y="3" rx="1"/>
+            <rect width="7" height="5" x="14" y="3" rx="1"/>
+            <rect width="7" height="9" x="14" y="12" rx="1"/>
+            <rect width="7" height="5" x="3" y="16" rx="1"/>
+          </svg>
+          <span>Visão Geral</span>
+        </button>
+
+        <button class="nav-tab" data-tab="commands" role="tab" aria-selected="false">
+          <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polygon points="5 3 19 12 5 21 5 3"/>
+          </svg>
+          <span>Comandos</span>
+        </button>
+
+        <button class="nav-tab" data-tab="logs" role="tab" aria-selected="false">
+          <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="4 17 10 11 4 5"/>
+            <line x1="12" x2="20" y1="19" y2="19"/>
+          </svg>
+          <span>Logs / Terminal</span>
+        </button>
+
+        <button class="nav-tab" data-tab="settings" role="tab" aria-selected="false">
+          <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/>
+            <circle cx="12" cy="12" r="3"/>
+          </svg>
+          <span>Configurações</span>
+        </button>
+      </nav>
+
+      <!-- Right Header Actions: Status & Theme Toggle -->
+      <div class="nav-actions">
+        <div class="connection-pill" id="connectionBadge" title="Status da Conexão com o Bot">
+          <span class="status-pulse-dot" id="statusDot"></span>
+          <span class="status-label" id="statusLabel">Conectando...</span>
+          <span class="latency-tag" id="latencyTag">-- ms</span>
         </div>
 
-        <div class="action-buttons">
-          <button id="btnStart" class="btn btn-success" title="Iniciar Bot em Segundo Plano">
-            <span class="btn-icon">▶</span> Iniciar Bot
-          </button>
-          <button id="btnStop" class="btn btn-danger" title="Parar Execução do Bot">
-            <span class="btn-icon">⏹</span> Parar Bot
-          </button>
-          <button id="btnOpenRescan" class="btn btn-primary" title="Forçar releitura das conversas do grupo">
-            <span class="btn-icon">🔄</span> Releitura do Grupo
-          </button>
-        </div>
+        <button class="theme-toggle-btn" id="themeToggle" title="Alternar Modo Claro / Escuro" aria-label="Alternar tema">
+          <!-- Sun icon (Light) -->
+          <svg class="sun-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="4"/>
+            <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/>
+          </svg>
+          <!-- Moon icon (Dark) -->
+          <svg class="moon-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>
+          </svg>
+        </button>
       </div>
     </header>
 
-    <!-- Main Content -->
-    <main class="main-content">
-      <!-- Metrics Cards -->
-      <section class="metrics-grid">
-        <div class="metric-card">
-          <div class="metric-icon bg-blue">📋</div>
-          <div class="metric-info">
-            <span class="metric-label">Total de Mensagens Lidas</span>
-            <span id="statTotal" class="metric-value">0</span>
-          </div>
-        </div>
+    <!-- Main Views Container -->
+    <main class="content-wrapper">
 
-        <div class="metric-card">
-          <div class="metric-icon bg-green">✅</div>
-          <div class="metric-info">
-            <span class="metric-label">Agendamentos Válidos</span>
-            <span id="statAgendamentos" class="metric-value">0</span>
-          </div>
-        </div>
-
-        <div class="metric-card">
-          <div class="metric-icon bg-yellow">⚠️</div>
-          <div class="metric-info">
-            <span class="metric-label">Duplicados Ignorados</span>
-            <span id="statDuplicados" class="metric-value">0</span>
-          </div>
-        </div>
-
-        <div class="metric-card">
-          <div class="metric-icon bg-gray">⚪</div>
-          <div class="metric-info">
-            <span class="metric-label">Descartados / Conversas</span>
-            <span id="statDescartados" class="metric-value">0</span>
-          </div>
-        </div>
-
-        <div class="metric-card highlight">
-          <div class="metric-icon bg-purple">📊</div>
-          <div class="metric-info">
-            <span class="metric-label">Aba Ativa no Sheets</span>
-            <span id="statAba" class="metric-value active-tab-text">-</span>
-            <small id="statCiclo" class="metric-sub">Ciclo: -</small>
-          </div>
-        </div>
-      </section>
-
-      <!-- History Section -->
-      <section class="card history-card">
-        <div class="card-header">
-          <div class="card-title-group">
-            <h2>📑 Histórico de Mensagens Processadas</h2>
-            <p>Auditoria completa de todas as mensagens lidas pelo bot e o resultado da classificação.</p>
-          </div>
-
-          <div class="filters-bar">
-            <div class="filter-tabs">
-              <button class="filter-tab active" data-status="TODOS">Todos</button>
-              <button class="filter-tab" data-status="AGENDAMENTO">Agendamentos</button>
-              <button class="filter-tab" data-status="DUPLICADO">Duplicados</button>
-              <button class="filter-tab" data-status="DESCARTADO">Descartados</button>
+      <!-- ======================================================== -->
+      <!-- ABA 1: VISÃO GERAL                                       -->
+      <!-- ======================================================== -->
+      <section class="tab-panel active" id="view-overview" role="tabpanel">
+        <!-- Hero Metrics Grid -->
+        <div class="metrics-grid">
+          <div class="metric-card">
+            <div class="metric-header">
+              <span class="metric-title">Status Operacional</span>
+              <span class="metric-icon-wrap">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+              </span>
             </div>
-
-            <div class="search-box">
-              <input type="text" id="searchInput" placeholder="Buscar por veículo, chassi, remetente...">
-              <button id="btnSearch" class="btn btn-sm btn-outline">Buscar</button>
+            <div class="metric-body">
+              <div class="metric-value-row">
+                <span class="metric-number" id="cardBotStatus">Verificando...</span>
+              </div>
+              <span class="metric-hint" id="cardBotPid">PID: --</span>
             </div>
           </div>
+
+          <div class="metric-card">
+            <div class="metric-header">
+              <span class="metric-title">Memória RAM (Node.js)</span>
+              <span class="metric-icon-wrap">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="16" height="16" x="4" y="4" rx="2"/><rect width="6" height="6" x="9" y="9" rx="1"/></svg>
+              </span>
+            </div>
+            <div class="metric-body">
+              <div class="metric-value-row">
+                <span class="metric-number" id="cardRamUsage">--</span>
+                <span class="metric-unit">MB</span>
+              </div>
+              <span class="metric-hint" id="cardRamHeap">Heap: -- MB</span>
+            </div>
+          </div>
+
+          <div class="metric-card">
+            <div class="metric-header">
+              <span class="metric-title">Tempo Ativo (Uptime)</span>
+              <span class="metric-icon-wrap">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+              </span>
+            </div>
+            <div class="metric-body">
+              <div class="metric-value-row">
+                <span class="metric-number" id="cardUptime">--</span>
+              </div>
+              <span class="metric-hint" id="cardScheduleHint">Rotina: 07:00 às 19:00</span>
+            </div>
+          </div>
+
+          <div class="metric-card">
+            <div class="metric-header">
+              <span class="metric-title">Mensagens Lidas</span>
+              <span class="metric-icon-wrap">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/></svg>
+              </span>
+            </div>
+            <div class="metric-body">
+              <div class="metric-value-row">
+                <span class="metric-number" id="cardTotalLidas">0</span>
+              </div>
+              <span class="metric-hint">Total avaliado no grupo</span>
+            </div>
+          </div>
+
+          <div class="metric-card highlight-green">
+            <div class="metric-header">
+              <span class="metric-title">Agendamentos Lançados</span>
+              <span class="metric-icon-wrap">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+              </span>
+            </div>
+            <div class="metric-body">
+              <div class="metric-value-row">
+                <span class="metric-number text-success" id="cardAgendamentos">0</span>
+              </div>
+              <span class="metric-hint" id="cardDuplicatesHint">Duplicados prevenidos: 0</span>
+            </div>
+          </div>
+
+          <div class="metric-card highlight-blue">
+            <div class="metric-header">
+              <span class="metric-title">Aba Ativa na Planilha</span>
+              <span class="metric-icon-wrap">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>
+              </span>
+            </div>
+            <div class="metric-body">
+              <div class="metric-value-row">
+                <span class="metric-number text-highlight" id="cardActiveTab">--</span>
+              </div>
+              <span class="metric-hint" id="cardCycleRange">Ciclo: Calculando...</span>
+            </div>
+          </div>
         </div>
 
-        <!-- Table -->
-        <div class="table-container">
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th style="width: 140px;">Data / Hora</th>
-                <th style="width: 150px;">Remetente</th>
-                <th style="width: 130px;">Classificação</th>
-                <th>Detalhes do Agendamento / Motivo</th>
-                <th style="width: 90px; text-align: center;">Ações</th>
-              </tr>
-            </thead>
-            <tbody id="historyTableBody">
-              <tr>
-                <td colspan="5" class="empty-state">Carregando histórico de mensagens...</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+        <!-- Audit & History Panel -->
+        <div class="card panel-card">
+          <div class="card-header-bar">
+            <div>
+              <h2 class="section-title">Auditoria e Histórico de Mensagens</h2>
+              <p class="section-description">Registro de todas as mensagens lidas, avaliações da inteligência artificial e inserções na planilha.</p>
+            </div>
 
-        <!-- Pagination -->
-        <div class="pagination-footer">
-          <span id="paginationInfo" class="pagination-info">Mostrando 0 de 0 mensagens</span>
-          <div class="pagination-controls">
-            <button id="btnPrevPage" class="btn btn-sm btn-outline" disabled>← Anterior</button>
-            <button id="btnNextPage" class="btn btn-sm btn-outline" disabled>Próxima →</button>
+            <!-- Quick Action: Re-scan button right on overview -->
+            <button class="btn btn-outline btn-sm" id="btnQuickRescan">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-svg"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 21h5v-5"/></svg>
+              Releitura do Grupo
+            </button>
+          </div>
+
+          <!-- Controls / Filter bar -->
+          <div class="filter-toolbar">
+            <div class="segmented-control" role="radiogroup" aria-label="Filtrar por classificação">
+              <button class="segment-btn active" data-status="TODOS">Todos</button>
+              <button class="segment-btn" data-status="AGENDAMENTO">Agendamentos</button>
+              <button class="segment-btn" data-status="DUPLICADO">Duplicados</button>
+              <button class="segment-btn" data-status="DESCARTADO">Descartados</button>
+            </div>
+
+            <div class="search-field-wrapper">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="search-icon"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+              <input type="text" id="overviewSearchInput" class="search-input" placeholder="Buscar veículo, placa, remetente, destino...">
+              <button class="btn btn-sm btn-secondary" id="btnOverviewSearch">Filtrar</button>
+            </div>
+          </div>
+
+          <!-- History Table -->
+          <div class="table-responsive">
+            <table class="corporate-table">
+              <thead>
+                <tr>
+                  <th style="width: 145px;">Data & Hora</th>
+                  <th style="width: 160px;">Remetente</th>
+                  <th style="width: 135px;">Classificação</th>
+                  <th>Veículo / Rota / Justificativa</th>
+                  <th style="width: 85px; text-align: center;">Ações</th>
+                </tr>
+              </thead>
+              <tbody id="historyTableBody">
+                <tr>
+                  <td colspan="5" class="table-state-cell">Carregando histórico do bot...</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Pagination Bar -->
+          <div class="table-pagination">
+            <span class="pagination-counter" id="paginationLabel">Mostrando 0 de 0 registros</span>
+            <div class="pagination-buttons">
+              <button class="btn btn-sm btn-outline" id="btnPrevPage" disabled>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-svg"><polyline points="15 18 9 12 15 6"/></svg>
+                Anterior
+              </button>
+              <button class="btn btn-sm btn-outline" id="btnNextPage" disabled>
+                Próxima
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-svg"><polyline points="9 18 15 12 9 6"/></svg>
+              </button>
+            </div>
           </div>
         </div>
       </section>
 
-      <!-- Logs Terminal -->
-      <section class="card logs-card">
-        <div class="card-header">
-          <div class="card-title-group">
-            <h2>💻 Registro de Atividades em Tempo Real (Logs)</h2>
-            <p>Acompanhamento direto do terminal do bot.</p>
+      <!-- ======================================================== -->
+      <!-- ABA 2: COMANDOS                                          -->
+      <!-- ======================================================== -->
+      <section class="tab-panel" id="view-commands" role="tabpanel">
+        <div class="commands-layout">
+          <!-- Card 1: Controle de Execução do Bot -->
+          <div class="card command-card">
+            <div class="card-header-bar">
+              <div>
+                <h3 class="card-heading">Controle do Serviço do Bot</h3>
+                <p class="section-description">Gerenciamento do processo principal de escuta do WhatsApp em segundo plano.</p>
+              </div>
+              <span class="badge" id="cmdProcessBadge">Verificando</span>
+            </div>
+
+            <div class="command-content">
+              <div class="status-summary-box">
+                <div class="summary-item">
+                  <span class="summary-label">Status Atual</span>
+                  <strong class="summary-val" id="cmdProcessStatus">--</strong>
+                </div>
+                <div class="summary-item">
+                  <span class="summary-label">PID do Processo</span>
+                  <strong class="summary-val" id="cmdProcessPid">--</strong>
+                </div>
+                <div class="summary-item">
+                  <span class="summary-label">Rotina Programada</span>
+                  <strong class="summary-val text-muted">07:00 às 19:00</strong>
+                </div>
+              </div>
+
+              <div class="btn-row">
+                <button class="btn btn-primary" id="btnCmdStart">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-svg"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                  Iniciar Bot
+                </button>
+                <button class="btn btn-danger" id="btnCmdStop">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-svg"><rect width="18" height="18" x="3" y="3" rx="2"/></svg>
+                  Parar Bot
+                </button>
+              </div>
+            </div>
           </div>
-          <div class="logs-controls">
-            <label class="auto-scroll-toggle">
-              <input type="checkbox" id="chkAutoScroll" checked> Auto-scroll
-            </label>
-            <button id="btnRefreshLogs" class="btn btn-sm btn-outline">Atualizar Logs</button>
+
+          <!-- Card 2: Releitura sob Demanda (Re-scan) -->
+          <div class="card command-card">
+            <div class="card-header-bar">
+              <div>
+                <h3 class="card-heading">Releitura do Histórico de Conversas</h3>
+                <p class="section-description">Força o bot a reler mensagens passadas do grupo para resgatar agendamentos.</p>
+              </div>
+            </div>
+
+            <div class="command-content">
+              <div class="rescan-form">
+                <label class="radio-option">
+                  <input type="radio" name="rescanPeriod" value="cycle" checked id="radioCycle">
+                  <div class="radio-text">
+                    <strong>Ciclo de Faturamento Vigente</strong>
+                    <span class="text-muted" id="cmdCycleHelp">A partir do dia 24 do ciclo atual</span>
+                  </div>
+                </label>
+
+                <label class="radio-option">
+                  <input type="radio" name="rescanPeriod" value="custom" id="radioCustom">
+                  <div class="radio-text">
+                    <strong>Data Específica</strong>
+                    <span class="text-muted">A partir de um dia determinado até o presente momento</span>
+                  </div>
+                </label>
+
+                <div class="date-picker-wrap" id="customDateContainer" style="display: none;">
+                  <label class="input-label" for="cmdCustomDate">Data Inicial:</label>
+                  <input type="date" id="cmdCustomDate" class="date-input">
+                </div>
+
+                <div class="info-alert">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="alert-icon"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg>
+                  <span>O sistema possui proteção contra duplicidade: mensagens já adicionadas à planilha serão ignoradas automaticamente.</span>
+                </div>
+
+                <button class="btn btn-outline" id="btnCmdRescan">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-svg"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 21h5v-5"/></svg>
+                  Executar Releitura Agora
+                </button>
+              </div>
+            </div>
           </div>
-        </div>
-        <div id="logsTerminal" class="logs-terminal">
-          <pre id="logsContent">Carregando registros...</pre>
+
+          <!-- Card 3: Sincronização & Checagem da Planilha -->
+          <div class="card command-card">
+            <div class="card-header-bar">
+              <div>
+                <h3 class="card-heading">Google Sheets & Conectividade</h3>
+                <p class="section-description">Testar conexão com a API do Google Sheets e validar a criação da aba mensal correta.</p>
+              </div>
+            </div>
+
+            <div class="command-content">
+              <p class="text-muted mb-4">Garante que a planilha de faturamento está acessível e cria a aba do ciclo vigente caso ainda não exista.</p>
+              <button class="btn btn-secondary" id="btnCmdSyncSheets">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-svg"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>
+                Testar Conexão com Google Sheets
+              </button>
+            </div>
+          </div>
+
+          <!-- Card 4: Manutenção de Logs e Cache -->
+          <div class="card command-card">
+            <div class="card-header-bar">
+              <div>
+                <h3 class="card-heading">Manutenção & Limpeza</h3>
+                <p class="section-description">Utilitários para truncamento de logs e liberação de espaço do terminal.</p>
+              </div>
+            </div>
+
+            <div class="command-content">
+              <p class="text-muted mb-4">Limpa o arquivo <code>logs/bot.log</code> para manter o terminal enxuto e de fácil leitura.</p>
+              <button class="btn btn-outline" id="btnCmdClearLogs">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-svg"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+                Limpar Logs do Arquivo
+              </button>
+            </div>
+          </div>
         </div>
       </section>
+
+      <!-- ======================================================== -->
+      <!-- ABA 3: LOGS / TERMINAL                                   -->
+      <!-- ======================================================== -->
+      <section class="tab-panel" id="view-logs" role="tabpanel">
+        <div class="card terminal-wrapper-card">
+          <!-- Terminal Controls Bar -->
+          <div class="terminal-toolbar">
+            <div class="terminal-left-tools">
+              <!-- Window style dots -->
+              <div class="window-decor-dots" aria-hidden="true">
+                <span class="decor-dot dot-red"></span>
+                <span class="decor-dot dot-yellow"></span>
+                <span class="decor-dot dot-green"></span>
+              </div>
+
+              <!-- Level filters -->
+              <div class="terminal-filters" role="group" aria-label="Filtrar severidade">
+                <button class="log-filter-btn active" data-level="ALL">Todos</button>
+                <button class="log-filter-btn" data-level="INFO">INFO</button>
+                <button class="log-filter-btn" data-level="WARN">WARN</button>
+                <button class="log-filter-btn" data-level="ERROR">ERRO</button>
+              </div>
+            </div>
+
+            <div class="terminal-right-tools">
+              <!-- Search inside logs -->
+              <div class="term-search-box">
+                <input type="text" id="termSearchInput" placeholder="Filtrar saída...">
+              </div>
+
+              <!-- Auto scroll switch -->
+              <label class="toggle-control" title="Rolar automaticamente para a última linha">
+                <input type="checkbox" id="chkAutoScroll" checked>
+                <span class="toggle-slider"></span>
+                <span class="toggle-text">Auto-scroll</span>
+              </label>
+
+              <!-- Action buttons -->
+              <button class="btn btn-sm btn-secondary" id="btnCopyLogs" title="Copiar todos os logs exibidos">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-svg"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+                Copiar
+              </button>
+
+              <button class="btn btn-sm btn-outline" id="btnRefreshLogs" title="Recarregar agora">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-svg"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 21h5v-5"/></svg>
+              </button>
+            </div>
+          </div>
+
+          <!-- Monospace Terminal Screen -->
+          <div class="terminal-screen" id="terminalScreen">
+            <div id="terminalBody" class="terminal-stream">
+              <span class="term-line term-dim">Conectando ao stream de logs do bot...</span>
+            </div>
+          </div>
+
+          <div class="terminal-footer-status">
+            <span id="termStatusText">Logs sincronizados em tempo real</span>
+            <span id="termLinesCount">0 linhas exibidas</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- ======================================================== -->
+      <!-- ABA 4: CONFIGURAÇÕES                                     -->
+      <!-- ======================================================== -->
+      <section class="tab-panel" id="view-settings" role="tabpanel">
+        <div class="settings-grid">
+          <!-- Card: Integrações e Credenciais -->
+          <div class="card settings-card">
+            <div class="card-header-bar">
+              <h3 class="card-heading">Integrações & Credenciais</h3>
+            </div>
+            <div class="settings-list">
+              <div class="setting-row">
+                <div class="setting-info">
+                  <span class="setting-title">WhatsApp Web Session</span>
+                  <span class="setting-desc">Autenticação persistente via pasta <code>.wwebjs_auth</code></span>
+                </div>
+                <span class="badge badge-success">Sessão Salva</span>
+              </div>
+
+              <div class="setting-row">
+                <div class="setting-info">
+                  <span class="setting-title">ID do Grupo de Monitoramento</span>
+                  <span class="setting-desc" id="cfgGroupId">Carregando...</span>
+                </div>
+                <span class="badge" id="cfgGroupBadge">Configurado</span>
+              </div>
+
+              <div class="setting-row">
+                <div class="setting-info">
+                  <span class="setting-title">Google Sheets ID</span>
+                  <span class="setting-desc" id="cfgSheetId">Carregando...</span>
+                </div>
+                <span class="badge" id="cfgSheetBadge">Configurado</span>
+              </div>
+
+              <div class="setting-row">
+                <div class="setting-info">
+                  <span class="setting-title">Inteligência Artificial (Gemini)</span>
+                  <span class="setting-desc" id="cfgGeminiModel">Modelo: gemini-1.5-flash</span>
+                </div>
+                <span class="badge" id="cfgGeminiBadge">Chave Ativa</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Card: Rotina de Execução Automática -->
+          <div class="card settings-card">
+            <div class="card-header-bar">
+              <h3 class="card-heading">Rotina Diária & Automação</h3>
+            </div>
+            <div class="settings-list">
+              <div class="setting-row">
+                <div class="setting-info">
+                  <span class="setting-title">Horário de Início</span>
+                  <span class="setting-desc">Inicialização automática diária pelo agendador</span>
+                </div>
+                <span class="status-clock-badge">07:00 da manhã</span>
+              </div>
+
+              <div class="setting-row">
+                <div class="setting-info">
+                  <span class="setting-title">Horário de Término</span>
+                  <span class="setting-desc">Parada do bot e início do procedimento de desligamento</span>
+                </div>
+                <span class="status-clock-badge">19:00 da noite</span>
+              </div>
+
+              <div class="setting-row">
+                <div class="setting-info">
+                  <span class="setting-title">Desligamento Automático</span>
+                  <span class="setting-desc">Solicitação de autorização na tela com tolerância de 5 minutos antes de desligar</span>
+                </div>
+                <span class="badge badge-warning">5 min tolerância</span>
+              </div>
+
+              <div class="setting-row">
+                <div class="setting-info">
+                  <span class="setting-title">Regra do Ciclo de Faturamento</span>
+                  <span class="setting-desc">Ciclo contábil de 24 do mês anterior a 23 do mês atual</span>
+                </div>
+                <span class="badge badge-info">Dia 24 a 23</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Card: Informações do Sistema -->
+          <div class="card settings-card">
+            <div class="card-header-bar">
+              <h3 class="card-heading">Ambiente do Servidor</h3>
+            </div>
+            <div class="settings-list">
+              <div class="setting-row">
+                <div class="setting-info">
+                  <span class="setting-title">Versão do Node.js</span>
+                  <span class="setting-desc" id="sysNodeVer">--</span>
+                </div>
+              </div>
+
+              <div class="setting-row">
+                <div class="setting-info">
+                  <span class="setting-title">Plataforma / SO</span>
+                  <span class="setting-desc" id="sysPlatform">Windows</span>
+                </div>
+              </div>
+
+              <div class="setting-row">
+                <div class="setting-info">
+                  <span class="setting-title">Porta Local do Painel</span>
+                  <span class="setting-desc" id="sysPort">3000 (http://localhost:3000)</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
     </main>
 
-    <!-- Modal de Releitura -->
-    <div id="rescanModal" class="modal-backdrop">
+    <!-- ======================================================== -->
+    <!-- MODAL: DETALHES DA MENSAGEM                              -->
+    <!-- ======================================================== -->
+    <div id="detailModal" class="modal-backdrop" aria-hidden="true">
       <div class="modal-dialog">
         <div class="modal-header">
-          <h3>🔄 Releitura do Grupo de WhatsApp</h3>
-          <button id="btnCloseModal" class="btn-close">&times;</button>
-        </div>
-        <div class="modal-body">
-          <p>Selecione a partir de qual data o bot deve reler as mensagens do grupo e atualizar a planilha:</p>
-          
-          <div class="form-group">
-            <label>
-              <input type="radio" name="rescanOption" value="cycle" checked>
-              <strong>Todo o ciclo de faturamento ativo</strong> (a partir do dia 24)
-            </label>
+          <div class="modal-title-group">
+            <h3 class="modal-heading">Auditoria da Mensagem</h3>
+            <span class="modal-subheading" id="modalMessageDate">--</span>
           </div>
-
-          <div class="form-group">
-            <label>
-              <input type="radio" name="rescanOption" value="custom">
-              <strong>A partir de uma data específica:</strong>
-            </label>
-            <input type="date" id="customRescanDate" class="input-date" disabled>
-          </div>
-
-          <div class="alert-box">
-            ℹ️ A releitura pula automaticamente qualquer veículo que já conste na planilha para não gerar duplicatas.
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button id="btnCancelRescan" class="btn btn-outline">Cancelar</button>
-          <button id="btnConfirmRescan" class="btn btn-primary">Iniciar Releitura Agora</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Modal de Detalhes da Mensagem -->
-    <div id="detailModal" class="modal-backdrop">
-      <div class="modal-dialog modal-lg">
-        <div class="modal-header">
-          <h3>📋 Detalhes da Mensagem Processada</h3>
-          <button id="btnCloseDetailModal" class="btn-close">&times;</button>
+          <button class="modal-close-btn" id="btnCloseDetailModal" aria-label="Fechar modal">&times;</button>
         </div>
         <div class="modal-body" id="detailModalBody">
-          <!-- Conteúdo dinâmico -->
+          <!-- Dynamically populated -->
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" id="btnDismissModal">Fechar</button>
         </div>
       </div>
     </div>
+
+    <!-- Toast Notification Container -->
+    <div id="toastContainer" class="toast-container"></div>
   </div>
 
   <script src="app.js"></script>
 </body>
 </html>
-

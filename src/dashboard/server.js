@@ -91,6 +91,7 @@ const server = http.createServer(async (req, res) => {
     const proc = getBotProcessInfo();
     const stats = history.getStats();
     const cycleInfo = sheets.getTargetMonthInfo();
+    const mem = process.memoryUsage();
 
     res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
     res.end(
@@ -100,8 +101,63 @@ const server = http.createServer(async (req, res) => {
         stats,
         activeTab: cycleInfo.expectedTabName,
         cycleRange: `24/${String(cycleInfo.monthIndex === 0 ? 12 : cycleInfo.monthIndex).padStart(2, '0')} até 23/${String(cycleInfo.monthIndex + 1).padStart(2, '0')}`,
+        system: {
+          memoryRssMB: Math.round(mem.rss / (1024 * 1024)),
+          memoryHeapMB: Math.round(mem.heapUsed / (1024 * 1024)),
+          uptimeSeconds: Math.floor(process.uptime()),
+          nodeVersion: process.version,
+          platform: process.platform,
+        },
+        config: {
+          botSchedule: '07:00 às 19:00 (Diário)',
+          groupId: process.env.WHATSAPP_GROUP_ID
+            ? (process.env.WHATSAPP_GROUP_ID.substring(0, 16) + '...')
+            : 'Não configurado',
+          groupConfigured: !!process.env.WHATSAPP_GROUP_ID,
+          sheetConfigured: !!process.env.GOOGLE_SPREADSHEET_ID,
+          sheetId: process.env.GOOGLE_SPREADSHEET_ID
+            ? (process.env.GOOGLE_SPREADSHEET_ID.substring(0, 14) + '...***')
+            : 'Não configurado',
+          geminiConfigured: !!process.env.GEMINI_API_KEY,
+          geminiModel: process.env.GEMINI_MODEL || 'gemini-1.5-flash',
+          port: PORT,
+        },
       })
     );
+    return;
+  }
+
+  // ── API: LIMPAR LOGS ───────────────────────────────────────
+  if (pathname === '/api/clear-logs' && req.method === 'POST') {
+    try {
+      if (fs.existsSync(LOG_FILE)) {
+        fs.writeFileSync(LOG_FILE, `[${new Date().toISOString()}] [INFO] Logs limpos via Painel de Controle.\n`, 'utf8');
+      }
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: true, message: 'Logs limpos com sucesso.' }));
+    } catch (err) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: false, message: err.message }));
+    }
+    return;
+  }
+
+  // ── API: TESTAR / SINCRONIZAR PLANILHA ─────────────────────
+  if (pathname === '/api/sync-sheets' && req.method === 'POST') {
+    try {
+      const cycleInfo = sheets.getTargetMonthInfo();
+      await sheets.ensureTargetSheetExists();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(
+        JSON.stringify({
+          success: true,
+          message: `Conexão com Google Sheets bem-sucedida! Aba ativa: "${cycleInfo.expectedTabName}".`,
+        })
+      );
+    } catch (err) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: false, message: 'Erro ao sincronizar: ' + err.message }));
+    }
     return;
   }
 
