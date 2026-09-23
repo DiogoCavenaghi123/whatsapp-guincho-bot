@@ -457,6 +457,7 @@ async function handleMessage(message, config, isHistorical = false) {
 
   logger.info(`[DEBUG] Mensagem recebida no grupo Agenda guincho: "${body.substring(0, 50)}..."`);
 
+  // 1. Contexto recente para IA
   const recentContext = getRecentContext();
   pushRecentMessage(sender, body);
 

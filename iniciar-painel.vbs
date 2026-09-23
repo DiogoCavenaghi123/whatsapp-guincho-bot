@@ -16,6 +16,7 @@ Set Procs = Wmi.ExecQuery("SELECT * FROM Win32_Process WHERE Name = 'node.exe' A
 If Procs.Count = 0 Then
     ' Inicia o servidor do painel em segundo plano (janela oculta = 0)
     Cmd = "cmd.exe /c node src/dashboard/start-dashboard.js"
+    Cmd = "cmd.exe /c """ & NodeExe & """ src/dashboard/start-dashboard.js"
     WshShell.Run Cmd, 0, False
 Else
     ' Se ja esta rodando, apenas abre o navegador

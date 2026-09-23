@@ -18,6 +18,7 @@ End If
 
 ' Inicia o node com janela oculta (0)
 Cmd = "cmd.exe /c node src/index.js"
+Cmd = "cmd.exe /c node src/start-bg.js"
 WshShell.Run Cmd, 0, False
 
 WshShell.Popup "WhatsApp Guincho Bot foi iniciado em segundo plano!", 3, "Bot Iniciado", 64

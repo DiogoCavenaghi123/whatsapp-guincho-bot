@@ -18,7 +18,12 @@ function init() {
 }
 
 /**
- * Monta o prompt do classificador e extrator logístico do Grupo Hazul.
+ * Monta o prompt do classificador e extrator logístico do Grupo Hazul com as 27 seções normativas.
+ *
+ * @param {string} cleanText - Texto limpo da mensagem atual
+ * @param {string} contextoMensagens - Contexto recente de mensagens do grupo
+ * @param {string} dataAtual - Data atual de referência (YYYY-MM-DD ou DD/MM/AAAA)
+ * @returns {string}
  */
 function buildPrompt(cleanText, contextoMensagens, dataAtual) {
   return `# CLASSIFICADOR E EXTRATOR LOGÍSTICO — GRUPO HAZUL
@@ -35,7 +40,7 @@ Sua função é analisar mensagens trocadas em grupos operacionais do WhatsApp e
 * um AVISO OPERACIONAL;
 * ou apenas CONVERSA.
 
-## REGRA PRINCIPAL
+## REGRA PRINCIPAL: ANTI-ALUCINAÇÃO
 **Nunca crie, complete ou invente informações que não estejam presentes na mensagem ou no contexto fornecido.**
 A IA deve interpretar o que foi escrito, mas não deve tomar decisões baseadas em suposições.
 Quando uma informação obrigatória não puder ser determinada com segurança, marque a situação como \`necessitaRevisao: true\`.
@@ -63,235 +68,220 @@ Nunca transforme uma data relativa em uma data absoluta sem considerar a data at
 ---
 
 # 2. TIPOS DE MENSAGEM
-
 Classifique a mensagem em EXATAMENTE um dos seguintes tipos:
-NOVO_AGENDAMENTO
-ALTERACAO
-CANCELAMENTO
-CONFIRMACAO
-DUPLICIDADE
-AVISO_OPERACIONAL
-PERGUNTA
-CONVERSA
+- NOVO_AGENDAMENTO
+- ALTERACAO
+- CANCELAMENTO
+- CONFIRMACAO
+- DUPLICIDADE
+- AVISO_OPERACIONAL
+- PERGUNTA
+- CONVERSA
 
-## NOVO_AGENDAMENTO
-É um novo pedido para transportar um veículo específico.
-
-## ALTERACAO
-É uma alteração de um transporte já mencionado anteriormente.
-Exemplos: "Muda para amanhã.", "Pode entregar em Campinas.", "Troca o destino para Mogi.", "Esse vai na cegonha."
-Não crie um novo agendamento nesses casos.
-
-## CANCELAMENTO
-É uma solicitação para cancelar um transporte anteriormente solicitado.
-Exemplos: "Pode cancelar o Creta.", "Não precisa mais buscar esse carro.", "Cancela o transporte de amanhã."
-
-## CONFIRMACAO
-Confirmações ou respostas sobre um transporte já solicitado.
-Exemplos: "Agendado 17/09.", "Confirmado para amanhã.", "Pode deixar.", "Já foi agendado."
-
-## DUPLICIDADE
-Mensagem que representa um pedido já registrado ou que claramente repete um transporte existente.
-
-## AVISO_OPERACIONAL
-Informações sobre disponibilidade, escala, motorista, caminhão ou operação, sem solicitação de transporte de veículo específico.
-Exemplos: "Guincho à disposição.", "Caminhão liberado em Mogi.", "Guincho quebrou.", "Motorista disponível amanhã."
-
-## PERGUNTA
-Perguntas ou consultas que não representam um pedido novo de transporte.
-Exemplos: "O Creta já chegou?", "Tem previsão para o Kicks?", "Consegue buscar amanhã?"
-
-## CONVERSA
-Mensagens sem relação com um novo transporte ou com a operação logística.
-Exemplos: "Bom dia.", "Obrigado.", "Valeu.", "Combinado.", "No aguardo."
+## NOVO_AGENDAMENTO: É um novo pedido para transportar um veículo específico.
+## ALTERACAO: É uma alteração de um transporte já mencionado anteriormente (ex: "Muda para amanhã", "Troca o destino para Mogi"). Não crie um novo agendamento nesses casos.
+## CANCELAMENTO: Solicitação para cancelar um transporte solicitado anteriormente (ex: "Pode cancelar o Creta", "Não precisa mais buscar esse carro").
+## CONFIRMACAO: Confirmações ou respostas sobre um transporte já solicitado (ex: "Agendado 17/09", "Confirmado para amanhã", "Pode deixar").
+## DUPLICIDADE: Mensagem que representa um pedido já registrado ou que repete claramente um transporte existente.
+## AVISO_OPERACIONAL: Informações sobre disponibilidade, escala, motorista, caminhão ou operação sem veículo específico (ex: "Guincho à disposição", "Caminhão liberado em Mogi", "Guincho quebrou").
+## PERGUNTA: Perguntas ou consultas que não representam um pedido novo de transporte (ex: "O Creta já chegou?", "Tem previsão para o Kicks?", "Consegue buscar amanhã?").
+## CONVERSA: Mensagens sem relação com transporte ou logística (ex: "Bom dia", "Obrigado", "Valeu", "Combinado", "No aguardo").
 
 ---
 
 # 3. REGRA CRÍTICA PARA NOVO AGENDAMENTO
-
 Para \`tipoMensagem = NOVO_AGENDAMENTO\`, devem existir evidências de que o usuário está solicitando um NOVO transporte.
 Além disso, deve existir obrigatoriamente pelo menos UMA destas informações:
 1. MODELO DO VEÍCULO;
 2. PLACA;
 3. CHASSI.
-
-Exemplos válidos: TIGGO 7, KICKS, VERSA, CRETA, HB20, COROLLA, CAMARO, ABC1D23, 9BWZZZ..., chassi 95P...
-
-### IMPORTANTE:
-Apenas mencionar um veículo NÃO significa automaticamente que existe um agendamento.
-Exemplo: "O Creta já chegou?" -> PERGUNTA
-Exemplo: "Tem previsão para o Creta chegar?" -> PERGUNTA
-Exemplo: "Creta prata, buscar na Hymax e levar para Codive amanhã." -> NOVO_AGENDAMENTO
+Apenas mencionar um veículo NÃO significa automaticamente que existe um agendamento (ex: "O Creta já chegou?" -> PERGUNTA).
 
 ---
 
 # 4. NÃO INVENTE O VEÍCULO
-Nunca deduza o modelo do veículo apenas porque existe um modelo mencionado anteriormente no contexto.
-Se houver ambiguidade: \`necessitaRevisao: true\`, \`motivoRevisao: "Veículo não identificado de forma inequívoca."\`
+Nunca deduza o modelo do veículo apenas porque existe um modelo mencionado anteriormente no contexto se houver dúvida.
+Se houver ambiguidade: marque \`necessitaRevisao: true\`, \`motivoRevisao: "Veículo não identificado de forma inequívoca."\`.
 
 ---
 
 # 5. REFERÊNCIAS AO CONTEXTO
-Você pode utilizar o contexto para resolver referências claras.
-Se a mensagem atual for continuação ou mudança ("Pode mandar amanhã"), classifique como ALTERACAO ou CONFIRMACAO, NÃO crie um segundo agendamento.
+Você pode utilizar o contexto para resolver referências claras ("esse carro", "o outro"). Porém se for alteração/confirmação, use o tipo correspondente e NÃO crie um segundo agendamento.
 
 ---
 
 # 6. CAMPOS DO VEÍCULO
-Para um novo agendamento, extraia:
-- veiculo: Modelo do veículo em CAIXA ALTA (ex: TIGGO 7, KICKS, CRETA). Nunca coloque "-", "N/A" ou "DESCONHECIDO". Se não houver modelo, mas existir placa ou chassi, utilize "" e marque necessitaRevisao: true.
+- veiculo: Modelo do veículo em CAIXA ALTA (ex: TIGGO 7, KICKS, CRETA). Se não houver modelo mas existir placa/chassi, utilize "" e necessitaRevisao: true.
 - cor: Extraia a cor somente se estiver explícita (ex: PRETO, PRATA, BRANCO, CINZA, VERMELHO). Caso contrário "".
-- chassiPlaca: Prioridade: 1. Chassi; 2. Placa. Se ambos existirem, coloque ambos separados por " / " (ex: "ABC1D23 / 95P...").
+- chassiPlaca: Placa ou Chassi. Se ambos existirem: "PLACA / CHASSI".
 
 ---
 
 # 7. FREIO ELETRÔNICO
-Valores permitidos: SIM, NÃO, "" (preencher somente se explícito).
+Valores permitidos: SIM, NÃO, "" (somente se explícito).
 
 ---
 
 # 8. DEPARTAMENTO
-Valores permitidos: NOVOS, SEMI NOVOS, FUNILARIA, MECANICA.
-Se não houver informação suficiente: utilize "" e necessitaRevisao: true. NÃO invente NOVOS sem evidência.
+Valores permitidos: NOVOS, SEMI NOVOS, FUNILARIA, MECANICA. Padrão se não informado: NOVOS.
 
 ---
 
 # 9. VEÍCULO IMOBILIZADO
-Valores permitidos: SIM, NÃO, "". Somente marque SIM quando explícito que não pode se locomover.
+Valores permitidos: SIM, NÃO, "". Somente marque SIM quando explícito que não pode se locomover ou está batido/sem partida.
 
 ---
 
 # 10. ORIGEM E DESTINO
-- origem: local onde o veículo será coletado
-- destino: local onde o veículo será entregue
+- origem: Local onde o veículo será coletado
+- destino: Local onde o veículo será entregue
 
 ---
 
 # 11. RESPONSÁVEIS
-- responsavelEntrega: responsável na origem ou ""
-- responsavelRecebimento: responsável no destino ou ""
+- responsavelEntrega: Responsável na origem ou ""
+- responsavelRecebimento: Responsável no destino ou ""
 
 ---
 
 # 12. TIPO DE TRANSPORTE
-Valores permitidos: PLATAFORMA, CEGONHA (se houver indicação explícita de cegonha use CEGONHA, senão PLATAFORMA).
+Valores permitidos: PLATAFORMA, CEGONHA (padrão: PLATAFORMA).
 
 ---
 
 # 13. DATA DO TRANSPORTE
-- agendarPara: formato obrigatório DD/MM/AAAA.
-Interprete termos relativos (hoje, amanhã, dia 25) utilizando a dataAtual fornecida. Se não puder ser determinada, coloque "".
+- agendarPara: Formato DD/MM/AAAA. Converta termos relativos ("amanhã", "dia 25") usando a DATA ATUAL fornecida.
 
 ---
 
 # 14. FATURAMENTO
-Valores conhecidos:
-KENTO MM, KENTO SJBV, XIAN MM, XIAN SJBV, HONDA MM, HYMAX MG, CODIVE CPS, 50% HYMAX - 50% CODIVE, HAZUL ITAPIRA.
-Regras:
-- Coleta ou entrega em Mogi Mirim Toyota -> KENTO MM
-- Coleta ou entrega em São João Toyota -> KENTO SJBV
-- Coleta ou entrega na Caoa Chery Mogi -> XIAN MM
-- Coleta ou entrega na Caoa Chery São João -> XIAN SJBV
-- Coleta ou entrega em Honda -> HONDA MM
-- Coleta ou entrega no Sul de Minas / Poços -> HYMAX MG
-- Coleta ou entrega em Campinas -> CODIVE CPS
-- Transferência mútua entre Hymax e Codive -> 50% HYMAX - 50% CODIVE
-Se houver dúvida: utilize "" e necessitaRevisao: true.
+Valores conhecidos: KENTO MM, KENTO SJBV, XIAN MM, XIAN SJBV, HONDA MM, HYMAX MG, CODIVE CPS, 50% HYMAX - 50% CODIVE, HAZUL ITAPIRA.
+Se houver dúvida, marque necessitaRevisao: true.
 
 ---
 
 # 15. DUPLICIDADE
-A IA deve identificar possíveis duplicidades utilizando chassi, placa ou modelo+origem+destino+data.
-Não considere duplicado se origem ou destino forem diferentes. Sinalize \`possivelDuplicidade: true\` se houver forte indício.
+Sinalize \`possivelDuplicidade: true\` se houver forte indício de repetição de transporte já existente no contexto.
 
 ---
 
 # 16. ALTERAÇÕES
-Quando for alteração: \`tipoMensagem: "ALTERACAO"\`, \`campoAlterado: "..."\`, \`novoValor: "..."\`.
+Quando for alteração, informe \`tipoMensagem: "ALTERACAO"\`, \`campoAlterado\`, \`novoValor\`.
 
 ---
 
 # 17. CANCELAMENTOS
-Quando for cancelamento: \`tipoMensagem: "CANCELAMENTO"\`.
+Quando for cancelamento, informe \`tipoMensagem: "CANCELAMENTO"\`.
 
 ---
 
 # 18. CONFIANÇA
-Pontuação entre 0.00 e 1.00. Se for abaixo de 0.80, marque \`necessitaRevisao: true\`.
+Pontuação de 0.00 a 1.00. Se abaixo de 0.80, marque \`necessitaRevisao: true\`.
 
 ---
 
 # 19. REGRA ABSOLUTA CONTRA ALUCINAÇÃO
-NUNCA invente placa, chassi, cor, data, origem, destino, responsável, departamento ou faturamento.
+NUNCA invente placa, chassi, cor, data, origem ou destino.
 
 ---
 
 # 20. RESPOSTA OBRIGATORIAMENTE EM JSON
-Retorne EXCLUSIVAMENTE um objeto JSON válido (sem qualquer texto, markdown ou explicações fora do JSON).
+Retorne EXCLUSIVAMENTE um objeto JSON válido (sem texto ou markdown ao redor) seguindo os schemas abaixo:
 
-ESTRUTURAS ESPERADAS:
-
-Para NOVO_AGENDAMENTO:
+Se for NOVO_AGENDAMENTO:
 {
   "isAgendamento": true,
   "tipoMensagem": "NOVO_AGENDAMENTO",
-  "confianca": 0.98,
-  "veiculo": "TIGGO 7",
-  "cor": "PRETO",
-  "chassiPlaca": "ABC1D23",
+  "confianca": 0.95,
+  "veiculo": "MODELO",
+  "cor": "COR",
+  "chassiPlaca": "PLACA OU CHASSI",
   "freioEletronico": "",
   "departamento": "NOVOS",
   "veiculoImobilizado": "",
-  "origem": "HYMAX POÇOS",
+  "origem": "ORIGEM",
   "responsavelEntrega": "",
-  "destino": "CODIVE CAMPINAS",
+  "destino": "DESTINO",
   "responsavelRecebimento": "",
   "transporte": "PLATAFORMA",
-  "agendarPara": "24/09/2026",
-  "faturarPara": "HYMAX MG",
+  "agendarPara": "DD/MM/AAAA",
+  "faturarPara": "CONCESSIONARIA",
   "necessitaRevisao": false,
   "motivoRevisao": "",
   "possivelDuplicidade": false
 }
 
-Para ALTERACAO:
+Se for ALTERACAO:
 {
   "isAgendamento": false,
   "tipoMensagem": "ALTERACAO",
-  "confianca": 0.96,
-  "veiculo": "CRETA",
-  "chassiPlaca": "ABC1D23",
+  "confianca": 0.95,
+  "veiculo": "MODELO",
+  "chassiPlaca": "PLACA OU CHASSI",
   "campoAlterado": "agendarPara",
-  "novoValor": "25/09/2026",
+  "novoValor": "DD/MM/AAAA",
   "necessitaRevisao": false,
   "motivoRevisao": ""
 }
 
-Para CANCELAMENTO:
+Se for CANCELAMENTO:
 {
   "isAgendamento": false,
   "tipoMensagem": "CANCELAMENTO",
-  "confianca": 0.97,
-  "veiculo": "CRETA",
-  "chassiPlaca": "ABC1D23",
+  "confianca": 0.95,
+  "veiculo": "MODELO",
+  "chassiPlaca": "PLACA OU CHASSI",
   "necessitaRevisao": false,
   "motivoRevisao": ""
 }
 
-Para CONFIRMACAO, AVISO_OPERACIONAL, PERGUNTA ou CONVERSA:
+Se for CONFIRMACAO, AVISO_OPERACIONAL, PERGUNTA ou CONVERSA:
 {
   "isAgendamento": false,
-  "tipoMensagem": "CONFIRMACAO",
-  "motivo": "Confirmação de transporte já solicitado.",
-  "confianca": 0.99
+  "tipoMensagem": "CONFIRMACAO | AVISO_OPERACIONAL | PERGUNTA | CONVERSA",
+  "motivo": "Breve justificativa",
+  "confianca": 0.95
 }
 
 ---
 
+# 21. EXEMPLOS PRÁTICOS
+- "16/09 guincho a disposição do tonhao..." -> AVISO_OPERACIONAL (isAgendamento: false)
+- "Agendado 17/09" -> CONFIRMACAO (isAgendamento: false)
+- "O Creta já chegou?" -> PERGUNTA (isAgendamento: false)
+- "Bom dia pessoal" -> CONVERSA (isAgendamento: false)
+- "Favor agendar guincho para levar um Creta prata placa ABC1D23 da Hymax Poços para Codive Campinas amanhã" -> NOVO_AGENDAMENTO (isAgendamento: true)
+
+---
+
+# 22. VALIDAÇÃO DE CONCESSIONÁRIAS
+Padronize: Kento Mogi, Kento SJ, Hymax Poços, Hymax Mogi, Codive Campinas, Daitan Mogi, Daitan SJ.
+
+---
+
+# 23. TRATAMENTO DE OBSERVAÇÕES
+Instruções adicionais (ex: "Sem bateria", "Leva na cegonha") devem ser preservadas no campo observacao.
+
+---
+
+# 24. REGRAS DE ROTA
+Se não houver origem nem destino citados, não pode ser NOVO_AGENDAMENTO sem revisão.
+
+---
+
+# 25. CASOS DUVIDOSOS OU INCOMPLETOS
+Em caso de dúvida ou falta de dados cruciais: \`necessitaRevisao: true\`.
+
+---
+
+# 26. RESUMO DOS SCHEMAS JSON
+Siga estritamente o formato especificado acima.
+
+---
+
 # 27. REGRA FINAL DE SEGURANÇA
-A prioridade absoluta deste sistema é:
 PRECISÃO > COMPLETUDE > AUTOMATIZAÇÃO
-É preferível enviar um caso para revisão humana com necessitaRevisao: true do que criar um agendamento incorreto.`;
+É preferível solicitar revisão humana com necessitaRevisao: true do que criar um agendamento incorreto.`;
 }
 
 /**
@@ -316,11 +306,10 @@ async function classifyWithGemini(text, options = {}) {
 
   const models = [
     process.env.GEMINI_MODEL,
-    'gemini-flash-lite-latest',
-    'gemini-3.8-flash',
-    'gemini-3.1-flash-lite',
     'gemini-3.6-flash',
-    'gemini-1.5-flash',
+    'gemini-flash-latest',
+    'gemini-3.8-flash',
+    'gemini-flash-lite-latest',
   ].filter(Boolean);
 
   let responseText = null;
