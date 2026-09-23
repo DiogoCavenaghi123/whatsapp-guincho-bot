@@ -6,10 +6,11 @@ require('dotenv').config();
 
 const fs = require('fs');
 const path = require('path');
+const { execSync } = require('child_process');
 const logger = require('./logger');
 const sheets = require('./sheets');
 const gemini = require('./gemini');
-const { createClient, scanGroupMessages } = require('./whatsapp');
+const { createClient, cleanupStaleBrowserSession, scanGroupMessages } = require('./whatsapp');
 
 process.on('uncaughtException', (err) => {
   logger.error('Exceção não tratada:', err.stack || err.message);
@@ -26,9 +27,41 @@ async function main() {
   console.log('══════════════════════════════════════════════════════════');
   console.log('');
 
-  // ── Gravar PID do Processo Imediatamente ────────────────────
+  // ── Checar se outra instância do bot já está rodando ─────────
   const pidFile = path.resolve(__dirname, '../.bot.pid');
   const cmdFile = path.resolve(__dirname, '../.bot.cmd');
+
+  if (fs.existsSync(pidFile)) {
+    const oldPid = fs.readFileSync(pidFile, 'utf8').trim();
+    if (oldPid && /^\d+$/.test(oldPid)) {
+      let isAlreadyRunning = false;
+      if (process.platform === 'win32') {
+        try {
+          const out = execSync(`tasklist /fi "PID eq ${oldPid}" /fo csv /nh`, {
+            stdio: ['ignore', 'pipe', 'ignore'],
+            timeout: 3000,
+          }).toString();
+          if (out.includes('node.exe') && Number(oldPid) !== process.pid) {
+            isAlreadyRunning = true;
+          }
+        } catch (_) {}
+      } else {
+        try {
+          process.kill(Number(oldPid), 0);
+          if (Number(oldPid) !== process.pid) isAlreadyRunning = true;
+        } catch (_) {}
+      }
+
+      if (isAlreadyRunning) {
+        logger.warn(`O WhatsApp Guincho Bot já está em execução (PID: ${oldPid})!`);
+        logger.info('Para reiniciar, execute "parar-bot.bat" primeiro, ou gerencie pelo Painel de Controle (http://localhost:3000).');
+        console.log('');
+        process.exit(0);
+      }
+    }
+  }
+
+  // ── Gravar PID do Processo Atual ────────────────────────────
   try {
     fs.writeFileSync(pidFile, String(process.pid), 'utf8');
   } catch (e) {}
@@ -40,7 +73,7 @@ async function main() {
   const groupId = process.env.WHATSAPP_GROUP_ID;
   const spreadsheetId = process.env.GOOGLE_SHEET_ID;
   const sheetName = process.env.GOOGLE_SHEET_TAB || 'Agendamentos';
-  const credentialsPath = process.env.GOOGLE_CREDENTIALS_PATH || './credentials.json';
+  const credentialsPath = process.env.GOOGLE_CREDENTIALP_PATH || process.env.GOOGLE_CREDENTIALS_PATH || './credentials.json';
 
   if (!groupId) {
     logger.error('WHATSAPP_GROUP_ID não definido no .env');
@@ -63,8 +96,21 @@ async function main() {
 
   // ── Inicializar WhatsApp ───────────────────────────────────
   logger.info('Iniciando conexão com WhatsApp...');
-  const client = createClient({ groupId, spreadsheetId });
-  await client.initialize();
+  let client = createClient({ groupId, spreadsheetId });
+  try {
+    await client.initialize();
+  } catch (err) {
+    if (err.message && err.message.includes('The browser is already running')) {
+      logger.warn('Detectado bloqueio residual na sessão do Chromium.');
+      logger.info('Liberando travas órfãs e reconectando em 2 segundos...');
+      cleanupStaleBrowserSession();
+      await new Promise((r) => setTimeout(r, 2000));
+      client = createClient({ groupId, spreadsheetId });
+      await client.initialize();
+    } else {
+      throw err;
+    }
+  }
 
   // ── Listener de Comandos IPC (ex: Releitura disparada pelo Painel) ──
   // ── Listener de Comandos IPC (Releitura disparada pelo Painel) ──

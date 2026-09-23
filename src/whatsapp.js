@@ -3,6 +3,9 @@
 //  WhatsApp — Conexão, listeners, varredura e histórico
 // =============================================================
 
+const fs = require('fs');
+const path = require('path');
+const { execSync } = require('child_process');
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const Message = require('whatsapp-web.js/src/structures/Message');
 const qrcode = require('qrcode-terminal');
@@ -17,17 +20,56 @@ let activeConfig = null;
 let isScanning = false;
 
 /**
+ * Limpa processos órfãos do Chromium e remove arquivos de lock remanescentes
+ * de sessões anteriores que possam ter sido encerradas incorretamente.
+ */
+function cleanupStaleBrowserSession() {
+  const sessionDir = path.resolve(__dirname, '../.wwebjs_auth/session');
+
+  // 1. Mata processos chrome órfãos usando o diretório de autenticação do bot (no Windows)
+  if (process.platform === 'win32') {
+    try {
+      const psCmd = `powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter \\"Name LIKE '%chrome%'\\" | Where-Object { $_.CommandLine -like '*wwebjs_auth*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"`;
+      execSync(psCmd, { stdio: 'ignore', timeout: 5000 });
+    } catch (_) {}
+  }
+
+  // 2. Remove arquivos de lock conhecidos do Chromium
+  if (fs.existsSync(sessionDir)) {
+    const lockFiles = [
+      'lockfile',
+      'DevToolsActivePort',
+      'SingletonLock',
+      'SingletonCookie',
+      'SingletonSocket',
+    ];
+
+    for (const file of lockFiles) {
+      const fullPath = path.join(sessionDir, file);
+      try {
+        if (fs.existsSync(fullPath)) {
+          fs.unlinkSync(fullPath);
+          logger.debug(`Arquivo de lock órfão removido: ${file}`);
+        }
+      } catch (_) {}
+    }
+  }
+}
+
+/**
  * Cria e inicializa o cliente WhatsApp.
  *
  * @param {object} config
- * @param {string} config.groupId      — ID do grupo para monitorar
+ * @param {string} config.groupId       — ID do grupo para monitorar
  * @param {string} config.spreadsheetId — ID da planilha Google Sheets
- * @param {string} config.sheetName     — nome da aba na planilha
  * @param {string} [config.sheetName]   — nome da aba na planilha
  * @returns {Client}
  */
 function createClient(config) {
   activeConfig = config;
+
+  // Garante limpeza preventiva antes de instanciar o browser
+  cleanupStaleBrowserSession();
 
   const client = new Client({
     authStrategy: new LocalAuth(),
@@ -536,6 +578,7 @@ async function handleMessage(message, config, isHistorical = false) {
 
 module.exports = {
   createClient,
+  cleanupStaleBrowserSession,
   scanGroupMessages,
   handleMessage,
 };

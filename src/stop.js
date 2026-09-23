@@ -47,8 +47,40 @@ try {
   }
 } catch (e) {}
 
+// 3. Matar processos chrome.exe órfãos da sessão do WhatsApp
+if (process.platform === 'win32') {
+  try {
+    const psCmd = `powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter \\"Name LIKE '%chrome%'\\" | Where-Object { $_.CommandLine -like '*wwebjs_auth*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"`;
+    execSync(psCmd, { stdio: 'ignore', timeout: 5000 });
+  } catch (_) {}
+}
+
+// 4. Limpar travas órfãs do Chromium para o próximo início
+const sessionDir = path.resolve(__dirname, '../.wwebjs_auth/session');
+if (fs.existsSync(sessionDir)) {
+  const lockFiles = [
+    'lockfile',
+    'DevToolsActivePort',
+    'SingletonLock',
+    'SingletonCookie',
+    'SingletonSocket',
+  ];
+  for (const f of lockFiles) {
+    try {
+      const p = path.join(sessionDir, f);
+      if (fs.existsSync(p)) fs.unlinkSync(p);
+    } catch (_) {}
+  }
+}
+
+// 5. Limpar arquivo .bot.cmd residual
+const cmdPath = path.resolve(__dirname, '../.bot.cmd');
+try {
+  if (fs.existsSync(cmdPath)) fs.unlinkSync(cmdPath);
+} catch (_) {}
+
 if (killed) {
   console.log('\n\x1b[32m[ OK ] O bot foi finalizado com sucesso!\x1b[0m\n');
 } else {
-  console.log('\n\x1b[33m[INFO] Nenhum processo do bot encontrado em execucao.\x1b[0m\n');
+  console.log('\n\x1b[33m[INFO] Nenhum processo do bot encontrado em execucao (travas limpas).\x1b[0m\n');
 }
