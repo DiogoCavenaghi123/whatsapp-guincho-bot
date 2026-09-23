@@ -297,14 +297,16 @@ const server = http.createServer(async (req, res) => {
         '.png': 'image/png',
         '.svg': 'image/svg+xml',
         '.ico': 'image/x-icon',
-      };
-      res.writeHead(200, { 'Content-Type': mimeTypes[ext] || 'application/octet-stream' });
       res.writeHead(200, {
         'Content-Type': mimeTypes[ext] || 'application/octet-stream',
         'Cache-Control': 'no-cache, no-store, must-revalidate',
         Pragma: 'no-cache',
         Expires: '0',
       });
+      if (req.method === 'HEAD') {
+        res.end();
+        return;
+      }
       fs.createReadStream(filePath).pipe(res);
       return;
     }
