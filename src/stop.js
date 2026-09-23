@@ -16,6 +16,7 @@ if (fs.existsSync(pidPath)) {
     if (pid) {
       execSync(`taskkill /PID ${pid} /T /F`, { stdio: 'ignore' });
       killed = true;
+      console.log(`Processo PID ${pid} encerrado (via .bot.pid).`);
       console.log(`Processo do Bot PID ${pid} encerrado (via .bot.pid).`);
     }
     fs.unlinkSync(pidPath);
@@ -46,6 +47,7 @@ try {
 
   const lines = out.split(/\r?\n/).filter(l => l.trim().length > 0);
   for (const line of lines) {
+    if (line.includes('src/index.js') || line.includes('src\\index.js')) {
     if (
       line.includes('src/index.js') ||
       line.includes('src\\index.js') ||

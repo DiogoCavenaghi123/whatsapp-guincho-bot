@@ -1,6 +1,8 @@
 @echo off
 title Painel de Controle - WhatsApp Guincho Bot
 cd /d "%~dp0"
+start wscript.exe "%~dp0iniciar-painel.vbs"
+exit /b
 
 echo ============================================================
 echo   Painel de Controle - WhatsApp Guincho Bot

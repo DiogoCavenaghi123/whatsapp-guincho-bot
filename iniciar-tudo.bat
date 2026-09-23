@@ -8,6 +8,9 @@ echo   Iniciando WhatsApp Guincho Bot + Painel de Controle
 echo ============================================================
 echo.
 
+:: 1. Inicia o Painel de Controle (Dashboard) em segundo plano
+start wscript.exe "%~dp0iniciar-painel.vbs"
+echo [ OK ] Painel de Controle acionado (http://localhost:3000)
 :: 1. Inicia o Painel de Controle (Dashboard) em segundo plano minimizado
 start "Painel Guincho" /min cmd /c "node src/dashboard/server.js"
 echo [ OK ] Servidor do Painel acionado na porta 3000
@@ -17,6 +20,7 @@ start "" http://localhost:3000
 echo [ OK ] Painel aberto no navegador (http://localhost:3000)
 echo.
 
+:: 2. Inicia o Bot no terminal interativo
 :: 3. Inicia o Bot no terminal interativo
 echo [ OK ] Iniciando Bot do WhatsApp...
 echo ============================================================
@@ -28,3 +32,4 @@ if %ERRORLEVEL% NEQ 0 (
     echo [AVISO] O processo foi encerrado.
     pause
 )
+

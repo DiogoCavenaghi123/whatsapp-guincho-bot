@@ -81,3 +81,4 @@ for (const sc of shortcuts) {
 }
 
 console.log('\nAtalhos atualizados com sucesso na pasta BOT DO WHATSAPP!');
+

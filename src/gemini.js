@@ -330,6 +330,9 @@ async function classifyWithGemini(text, options = {}) {
       }
     } catch (err) {
       logger.debug(`Modelo ${model} indisponível (${err.status || err.message}), tentando próximo...`);
+      if (err.status === 503 || err.status === 429) {
+        await new Promise((r) => setTimeout(r, 1200));
+      }
     }
   }
 

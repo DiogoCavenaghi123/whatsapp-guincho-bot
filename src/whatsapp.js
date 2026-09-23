@@ -457,6 +457,7 @@ async function handleMessage(message, config, isHistorical = false) {
 
   logger.info(`[DEBUG] Mensagem recebida no grupo Agenda guincho: "${body.substring(0, 50)}..."`);
 
+  // 1. Tenta extrair com o parser rápido (padrão de texto com rótulos)
   // 1. Contexto recente para IA
   const recentContext = getRecentContext();
   pushRecentMessage(sender, body);
@@ -468,6 +469,7 @@ async function handleMessage(message, config, isHistorical = false) {
       timestamp: msgDate,
       author: sender,
       body,
+      status: 'DESCARTADO',
       status: 'AVISO_OPERACIONAL',
       reason: 'Aviso operacional ou confirmação simples (sem pedido de transporte)',
     });
@@ -478,10 +480,15 @@ async function handleMessage(message, config, isHistorical = false) {
   // 2. Parser Regex Rápido
   let agendamento = parseAgendamento(body);
 
+  // 2. Se o formato for livre ou informal, aciona o Gemini AI
+  // 3. Fallback inteligente com Google Gemini AI
   // 3. Fallback com Classificador Gemini AI (com contexto e data)
   let classification = null;
   if (!agendamento) {
+    logger.info('Tentando interpretar mensagem com Gemini AI...');
     logger.info('Interpretando mensagem com Gemini AI...');
+    agendamento = await gemini.parseWithGemini(body);
+    if (agendamento) {
     const dataAtual = msgDate ? new Date(msgDate).toLocaleDateString('pt-BR') : new Date().toLocaleDateString('pt-BR');
     classification = await gemini.classifyWithGemini(body, {
       contextoMensagens: recentContext,
@@ -496,6 +503,7 @@ async function handleMessage(message, config, isHistorical = false) {
 
   // Se não foi identificado como agendamento
   if (!agendamento) {
+    return;
     const statusType = classification ? (classification.tipoMensagem || 'DESCARTADO') : 'DESCARTADO';
     const reasonText = classification
       ? (classification.motivo || classification.motivoRevisao || classification.tipoMensagem)
@@ -512,6 +520,8 @@ async function handleMessage(message, config, isHistorical = false) {
       timestamp: msgDate,
       author: sender,
       body,
+      status: 'DESCARTADO',
+      reason: 'Conversa ou texto sem veículo/rota identificados',
       status: statusType,
       reason: reasonText,
       extractedData: classification || null,
