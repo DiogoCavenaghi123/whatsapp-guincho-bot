@@ -1,5 +1,5 @@
 // =============================================================
-//  Gemini — Extração Inteligente e Blindada de Agendamentos
+//  Gemini — Classificador e Extrator Logístico (Grupo Hazul)
 // =============================================================
 
 const { GoogleGenAI } = require('@google/genai');
@@ -18,143 +18,390 @@ function init() {
 }
 
 /**
- * Usa o Gemini com prompt contextual rigoroso para classificar se a mensagem
- * é um PEDIDO REAL de transporte de veículo e extrair seus dados.
- *
- * @param {string} text - Texto bruto da mensagem do WhatsApp
- * @returns {Promise<object|null>} - Objeto com os campos ou null se não for agendamento
+ * Monta o prompt do classificador e extrator logístico do Grupo Hazul.
  */
-async function parseWithGemini(text) {
+function buildPrompt(cleanText, contextoMensagens, dataAtual) {
+  return `# CLASSIFICADOR E EXTRATOR LOGÍSTICO — GRUPO HAZUL
+
+Você é um sistema de **classificação, interpretação e extração de dados logísticos de extrema precisão** para o Grupo Hazul.
+
+Sua função é analisar mensagens trocadas em grupos operacionais do WhatsApp e determinar se elas representam:
+* um NOVO pedido de transporte;
+* uma ALTERAÇÃO de transporte existente;
+* um CANCELAMENTO;
+* uma DUPLICIDADE;
+* uma CONFIRMAÇÃO;
+* uma PERGUNTA;
+* um AVISO OPERACIONAL;
+* ou apenas CONVERSA.
+
+## REGRA PRINCIPAL
+**Nunca crie, complete ou invente informações que não estejam presentes na mensagem ou no contexto fornecido.**
+A IA deve interpretar o que foi escrito, mas não deve tomar decisões baseadas em suposições.
+Quando uma informação obrigatória não puder ser determinada com segurança, marque a situação como \`necessitaRevisao: true\`.
+
+---
+
+# 1. CONTEXTO DA ANÁLISE
+
+### MENSAGEM ATUAL
+"""
+${cleanText}
+"""
+
+### CONTEXTO RECENTE DO GRUPO
+"""
+${contextoMensagens || '(Nenhuma mensagem recente anterior no contexto)'}
+"""
+
+### DATA ATUAL
+${dataAtual}
+
+Use a data atual para interpretar expressões relativas como: hoje, amanhã, depois de amanhã, sexta, segunda, próxima semana.
+Nunca transforme uma data relativa em uma data absoluta sem considerar a data atual fornecida.
+
+---
+
+# 2. TIPOS DE MENSAGEM
+
+Classifique a mensagem em EXATAMENTE um dos seguintes tipos:
+NOVO_AGENDAMENTO
+ALTERACAO
+CANCELAMENTO
+CONFIRMACAO
+DUPLICIDADE
+AVISO_OPERACIONAL
+PERGUNTA
+CONVERSA
+
+## NOVO_AGENDAMENTO
+É um novo pedido para transportar um veículo específico.
+
+## ALTERACAO
+É uma alteração de um transporte já mencionado anteriormente.
+Exemplos: "Muda para amanhã.", "Pode entregar em Campinas.", "Troca o destino para Mogi.", "Esse vai na cegonha."
+Não crie um novo agendamento nesses casos.
+
+## CANCELAMENTO
+É uma solicitação para cancelar um transporte anteriormente solicitado.
+Exemplos: "Pode cancelar o Creta.", "Não precisa mais buscar esse carro.", "Cancela o transporte de amanhã."
+
+## CONFIRMACAO
+Confirmações ou respostas sobre um transporte já solicitado.
+Exemplos: "Agendado 17/09.", "Confirmado para amanhã.", "Pode deixar.", "Já foi agendado."
+
+## DUPLICIDADE
+Mensagem que representa um pedido já registrado ou que claramente repete um transporte existente.
+
+## AVISO_OPERACIONAL
+Informações sobre disponibilidade, escala, motorista, caminhão ou operação, sem solicitação de transporte de veículo específico.
+Exemplos: "Guincho à disposição.", "Caminhão liberado em Mogi.", "Guincho quebrou.", "Motorista disponível amanhã."
+
+## PERGUNTA
+Perguntas ou consultas que não representam um pedido novo de transporte.
+Exemplos: "O Creta já chegou?", "Tem previsão para o Kicks?", "Consegue buscar amanhã?"
+
+## CONVERSA
+Mensagens sem relação com um novo transporte ou com a operação logística.
+Exemplos: "Bom dia.", "Obrigado.", "Valeu.", "Combinado.", "No aguardo."
+
+---
+
+# 3. REGRA CRÍTICA PARA NOVO AGENDAMENTO
+
+Para \`tipoMensagem = NOVO_AGENDAMENTO\`, devem existir evidências de que o usuário está solicitando um NOVO transporte.
+Além disso, deve existir obrigatoriamente pelo menos UMA destas informações:
+1. MODELO DO VEÍCULO;
+2. PLACA;
+3. CHASSI.
+
+Exemplos válidos: TIGGO 7, KICKS, VERSA, CRETA, HB20, COROLLA, CAMARO, ABC1D23, 9BWZZZ..., chassi 95P...
+
+### IMPORTANTE:
+Apenas mencionar um veículo NÃO significa automaticamente que existe um agendamento.
+Exemplo: "O Creta já chegou?" -> PERGUNTA
+Exemplo: "Tem previsão para o Creta chegar?" -> PERGUNTA
+Exemplo: "Creta prata, buscar na Hymax e levar para Codive amanhã." -> NOVO_AGENDAMENTO
+
+---
+
+# 4. NÃO INVENTE O VEÍCULO
+Nunca deduza o modelo do veículo apenas porque existe um modelo mencionado anteriormente no contexto.
+Se houver ambiguidade: \`necessitaRevisao: true\`, \`motivoRevisao: "Veículo não identificado de forma inequívoca."\`
+
+---
+
+# 5. REFERÊNCIAS AO CONTEXTO
+Você pode utilizar o contexto para resolver referências claras.
+Se a mensagem atual for continuação ou mudança ("Pode mandar amanhã"), classifique como ALTERACAO ou CONFIRMACAO, NÃO crie um segundo agendamento.
+
+---
+
+# 6. CAMPOS DO VEÍCULO
+Para um novo agendamento, extraia:
+- veiculo: Modelo do veículo em CAIXA ALTA (ex: TIGGO 7, KICKS, CRETA). Nunca coloque "-", "N/A" ou "DESCONHECIDO". Se não houver modelo, mas existir placa ou chassi, utilize "" e marque necessitaRevisao: true.
+- cor: Extraia a cor somente se estiver explícita (ex: PRETO, PRATA, BRANCO, CINZA, VERMELHO). Caso contrário "".
+- chassiPlaca: Prioridade: 1. Chassi; 2. Placa. Se ambos existirem, coloque ambos separados por " / " (ex: "ABC1D23 / 95P...").
+
+---
+
+# 7. FREIO ELETRÔNICO
+Valores permitidos: SIM, NÃO, "" (preencher somente se explícito).
+
+---
+
+# 8. DEPARTAMENTO
+Valores permitidos: NOVOS, SEMI NOVOS, FUNILARIA, MECANICA.
+Se não houver informação suficiente: utilize "" e necessitaRevisao: true. NÃO invente NOVOS sem evidência.
+
+---
+
+# 9. VEÍCULO IMOBILIZADO
+Valores permitidos: SIM, NÃO, "". Somente marque SIM quando explícito que não pode se locomover.
+
+---
+
+# 10. ORIGEM E DESTINO
+- origem: local onde o veículo será coletado
+- destino: local onde o veículo será entregue
+
+---
+
+# 11. RESPONSÁVEIS
+- responsavelEntrega: responsável na origem ou ""
+- responsavelRecebimento: responsável no destino ou ""
+
+---
+
+# 12. TIPO DE TRANSPORTE
+Valores permitidos: PLATAFORMA, CEGONHA (se houver indicação explícita de cegonha use CEGONHA, senão PLATAFORMA).
+
+---
+
+# 13. DATA DO TRANSPORTE
+- agendarPara: formato obrigatório DD/MM/AAAA.
+Interprete termos relativos (hoje, amanhã, dia 25) utilizando a dataAtual fornecida. Se não puder ser determinada, coloque "".
+
+---
+
+# 14. FATURAMENTO
+Valores conhecidos:
+KENTO MM, KENTO SJBV, XIAN MM, XIAN SJBV, HONDA MM, HYMAX MG, CODIVE CPS, 50% HYMAX - 50% CODIVE, HAZUL ITAPIRA.
+Regras:
+- Coleta ou entrega em Mogi Mirim Toyota -> KENTO MM
+- Coleta ou entrega em São João Toyota -> KENTO SJBV
+- Coleta ou entrega na Caoa Chery Mogi -> XIAN MM
+- Coleta ou entrega na Caoa Chery São João -> XIAN SJBV
+- Coleta ou entrega em Honda -> HONDA MM
+- Coleta ou entrega no Sul de Minas / Poços -> HYMAX MG
+- Coleta ou entrega em Campinas -> CODIVE CPS
+- Transferência mútua entre Hymax e Codive -> 50% HYMAX - 50% CODIVE
+Se houver dúvida: utilize "" e necessitaRevisao: true.
+
+---
+
+# 15. DUPLICIDADE
+A IA deve identificar possíveis duplicidades utilizando chassi, placa ou modelo+origem+destino+data.
+Não considere duplicado se origem ou destino forem diferentes. Sinalize \`possivelDuplicidade: true\` se houver forte indício.
+
+---
+
+# 16. ALTERAÇÕES
+Quando for alteração: \`tipoMensagem: "ALTERACAO"\`, \`campoAlterado: "..."\`, \`novoValor: "..."\`.
+
+---
+
+# 17. CANCELAMENTOS
+Quando for cancelamento: \`tipoMensagem: "CANCELAMENTO"\`.
+
+---
+
+# 18. CONFIANÇA
+Pontuação entre 0.00 e 1.00. Se for abaixo de 0.80, marque \`necessitaRevisao: true\`.
+
+---
+
+# 19. REGRA ABSOLUTA CONTRA ALUCINAÇÃO
+NUNCA invente placa, chassi, cor, data, origem, destino, responsável, departamento ou faturamento.
+
+---
+
+# 20. RESPOSTA OBRIGATORIAMENTE EM JSON
+Retorne EXCLUSIVAMENTE um objeto JSON válido (sem qualquer texto, markdown ou explicações fora do JSON).
+
+ESTRUTURAS ESPERADAS:
+
+Para NOVO_AGENDAMENTO:
+{
+  "isAgendamento": true,
+  "tipoMensagem": "NOVO_AGENDAMENTO",
+  "confianca": 0.98,
+  "veiculo": "TIGGO 7",
+  "cor": "PRETO",
+  "chassiPlaca": "ABC1D23",
+  "freioEletronico": "",
+  "departamento": "NOVOS",
+  "veiculoImobilizado": "",
+  "origem": "HYMAX POÇOS",
+  "responsavelEntrega": "",
+  "destino": "CODIVE CAMPINAS",
+  "responsavelRecebimento": "",
+  "transporte": "PLATAFORMA",
+  "agendarPara": "24/09/2026",
+  "faturarPara": "HYMAX MG",
+  "necessitaRevisao": false,
+  "motivoRevisao": "",
+  "possivelDuplicidade": false
+}
+
+Para ALTERACAO:
+{
+  "isAgendamento": false,
+  "tipoMensagem": "ALTERACAO",
+  "confianca": 0.96,
+  "veiculo": "CRETA",
+  "chassiPlaca": "ABC1D23",
+  "campoAlterado": "agendarPara",
+  "novoValor": "25/09/2026",
+  "necessitaRevisao": false,
+  "motivoRevisao": ""
+}
+
+Para CANCELAMENTO:
+{
+  "isAgendamento": false,
+  "tipoMensagem": "CANCELAMENTO",
+  "confianca": 0.97,
+  "veiculo": "CRETA",
+  "chassiPlaca": "ABC1D23",
+  "necessitaRevisao": false,
+  "motivoRevisao": ""
+}
+
+Para CONFIRMACAO, AVISO_OPERACIONAL, PERGUNTA ou CONVERSA:
+{
+  "isAgendamento": false,
+  "tipoMensagem": "CONFIRMACAO",
+  "motivo": "Confirmação de transporte já solicitado.",
+  "confianca": 0.99
+}
+
+---
+
+# 27. REGRA FINAL DE SEGURANÇA
+A prioridade absoluta deste sistema é:
+PRECISÃO > COMPLETUDE > AUTOMATIZAÇÃO
+É preferível enviar um caso para revisão humana com necessitaRevisao: true do que criar um agendamento incorreto.`;
+}
+
+/**
+ * Classifica detalhadamente a mensagem retornando o objeto de classificação completo.
+ *
+ * @param {string} text - Mensagem bruta
+ * @param {object} [options]
+ * @param {string} [options.contextoMensagens] - Histórico recente de mensagens do grupo
+ * @param {string} [options.dataAtual] - Data atual para resolução de termos relativos
+ * @returns {Promise<object|null>}
+ */
+async function classifyWithGemini(text, options = {}) {
   if (!ai || !text || typeof text !== 'string') return null;
 
   const cleanText = text.trim();
-  if (cleanText.length < 5) return null;
+  if (cleanText.length < 3) return null;
+
+  const dataAtual = options.dataAtual || new Date().toLocaleDateString('pt-BR');
+  const contextoMensagens = options.contextoMensagens || '';
+
+  const prompt = buildPrompt(cleanText, contextoMensagens, dataAtual);
+
+  const models = [
+    process.env.GEMINI_MODEL,
+    'gemini-flash-lite-latest',
+    'gemini-3.8-flash',
+    'gemini-3.1-flash-lite',
+    'gemini-3.6-flash',
+    'gemini-1.5-flash',
+  ].filter(Boolean);
+
+  let responseText = null;
+
+  for (const model of models) {
+    try {
+      const res = await ai.models.generateContent({
+        model,
+        contents: prompt,
+        config: {
+          responseMimeType: 'application/json',
+          temperature: 0.1, // Máxima precisão e determinismo
+        },
+      });
+      if (res && res.text) {
+        responseText = res.text;
+        break;
+      }
+    } catch (err) {
+      logger.debug(`Modelo ${model} indisponível (${err.status || err.message}), tentando próximo...`);
+    }
+  }
+
+  if (!responseText) return null;
 
   try {
-    const prompt = `Você é um classificador e extrator de dados de extrema precisão para uma empresa de transporte e guincho de veículos (Grupo Hazul).
-Sua missão é analisar mensagens trocadas em um grupo operacional de WhatsApp e determinar se a mensagem é uma SOLICITAÇÃO REAL DE TRANSPORTE DE VEÍCULO ou apenas conversa/confirmação/aviso operacional.
-
-CRITÉRIO CRÍTICO PARA SER UM AGENDAMENTO ("isAgendamento": true):
-1. Deve ser um PEDIDO NOVO DE TRANSPORTE DE UM VEÍCULO ESPECÍFICO.
-2. É OBRIGATÓRIO haver o modelo do carro (ex: TIGGO 7, KICKS, VERSA, CRETA, HB20, CAMARO, COROLLA, etc.) OU a placa/chassi do carro.
-3. Se NÃO houver um carro/veículo claramente especificado que precisa ser transportado, NÃO É UM AGENDAMENTO.
-
-EXEMPLOS DE MENSAGENS QUE NÃO SÃO AGENDAMENTOS ("isAgendamento": false):
-- Confirmações simples enviadas por motoristas ou atendentes:
-  * "Agendado 17/09" -> NÃO é agendamento (é apenas uma confirmação).
-  * "Agendado guincho 18/09" -> NÃO é agendamento.
-  * "Agendado cegonha 17/09" -> NÃO é agendamento.
-  * "Ok confirmado para amanhã" -> NÃO é agendamento.
-- Avisos de disponibilidade de caminhão/guincho ou motorista:
-  * "16/09 guincho a disposição do tonhao itapira hz campinas" -> NÃO é agendamento (não transporta nenhum carro, é apenas aviso de escala de motorista).
-  * "Guincho quebrou, está na oficina" -> NÃO é agendamento.
-  * "Caminhão liberado em Mogi" -> NÃO é agendamento.
-- Perguntas, dúvidas operacionais ou cobranças:
-  * "O carro de Mogi já foi carregado?" -> NÃO é agendamento.
-  * "Tem previsão para o Creta chegar?" -> NÃO é agendamento.
-  * "Consegue buscar um carro amanhã?" (pergunta aberta sem dados) -> NÃO é agendamento.
-- Mensagens de cortesia:
-  * "Bom dia", "Obrigado", "Valeu", "No aguardo".
-
-EXEMPLOS DE MENSAGENS QUE SÃO AGENDAMENTOS ("isAgendamento": true):
-- "VEICULO: TIGGO 7 PRO / COR: PRETO / CHASSI: 95P... / ORIGEM: MOGI / DESTINO: SJBV" -> É agendamento.
-- "Favor agendar guincho para levar um Creta prata placa ABC1D23 da Hymax Poços para a Codive Campinas amanhã" -> É agendamento.
-- "Preciso de transporte para um Kicks de Itapira para Mogi Mirim dia 25" -> É agendamento.
-
-Retorne EXCLUSIVAMENTE um objeto JSON válido (sem qualquer texto ou markdown adicional) com a seguinte estrutura:
-
-Se for um agendamento legítimo:
-{
-  "isAgendamento": true,
-  "veiculo": "modelo do veículo (OBRIGATÓRIO. Nunca deixe vazio ou '-', exemplo: TIGGO 7, KICKS, VERSA, CRETA, etc.)",
-  "cor": "cor do veículo ou string vazia",
-  "chassiPlaca": "placa ou chassi do veículo ou string vazia",
-  "freioEletronico": "SIM ou NÃO ou string vazia",
-  "departamento": "classifique em um destes 4: NOVOS, SEMI NOVOS, FUNILARIA ou MECANICA (padrão: NOVOS)",
-  "veiculoImobilizado": "SIM ou NÃO ou string vazia",
-  "origem": "local de coleta/origem",
-  "responsavelEntrega": "responsável pela entrega na origem ou string vazia",
-  "destino": "local de entrega/destino",
-  "responsavelRecebimento": "responsável pelo recebimento no destino ou string vazia",
-  "transporte": "PLATAFORMA ou CEGONHA (padrão PLATAFORMA)",
-  "agendarPara": "data agendada ou string vazia",
-  "faturarPara": "concessionária pagante da nota fiscal (ex: KENTO MM, KENTO SJBV, XIAN MM, XIAN SJBV, HONDA MM, HYMAX MG, CODIVE CPS, HAZUL ITAPIRA)"
-}
-
-Se NÃO for uma solicitação de transporte de veículo:
-{
-  "isAgendamento": false,
-  "motivo": "breve justificativa (ex: aviso operacional sem veículo, confirmação simples, pergunta)"
-}
-
-MENSAGEM A ANALISAR:
-\"\"\"
-${cleanText}
-\"\"\"`;
-
-    const models = [
-      'gemini-flash-lite-latest',
-      'gemini-3.8-flash',
-      'gemini-3.1-flash-lite',
-      'gemini-3.6-flash',
-    ];
-    let responseText = null;
-
-    for (const model of models) {
-      try {
-        const res = await ai.models.generateContent({
-          model,
-          contents: prompt,
-          config: {
-            responseMimeType: 'application/json',
-            temperature: 0.1, // Máxima precisão e determinismo
-          },
-        });
-        if (res && res.text) {
-          responseText = res.text;
-          break;
-        }
-      } catch (err) {
-        // Falha no modelo atual (503, 429 ou timeout), tenta o próximo modelo da lista
-        logger.debug(`Modelo ${model} indisponível (${err.status || err.message}), tentando próximo...`);
-      }
-    }
-
-    if (!responseText) return null;
-
-    // Extrai o bloco JSON da resposta
     const jsonMatch = responseText.match(/\{[\s\S]*\}/);
     if (!jsonMatch) return null;
 
     const parsed = JSON.parse(jsonMatch[0]);
 
-    // ── VALIDAÇÃO ESTRITA DE AGENDAMENTO ─────────────────────
-    // Se a IA indicou que NÃO é agendamento, descarta sumariamente!
-    if (parsed.isAgendamento !== true) {
-      logger.debug(`Gemini descartou mensagem: ${parsed.motivo || 'não é solicitação de transporte'}`);
-      return null;
-    }
+    // Validação estrita de novo agendamento
+    if (parsed.isAgendamento === true || parsed.tipoMensagem === 'NOVO_AGENDAMENTO') {
+      const veiculo = (parsed.veiculo || '').trim();
+      const chassiPlaca = (parsed.chassiPlaca || '').trim();
 
-    // O modelo de veículo é ESTRITAMENTE OBRIGATÓRIO
-    const veiculo = (parsed.veiculo || '').trim();
-    if (!veiculo || veiculo === '-' || veiculo === 'N/D' || veiculo.length < 2) {
-      logger.debug('Gemini retornou isAgendamento=true mas sem modelo de veículo válido. Rejeitado.');
-      return null;
-    }
-
-    // Precisa ter pelo menos uma origem ou um destino definidos
-    const origem = (parsed.origem || '').trim();
-    const destino = (parsed.destino || '').trim();
-    if (!origem && !destino) {
-      logger.debug('Gemini retornou isAgendamento=true mas sem rota (origem/destino). Rejeitado.');
-      return null;
+      // Regra 3: É obrigatório modelo OU placa/chassi
+      if (!veiculo && !chassiPlaca) {
+        parsed.isAgendamento = false;
+        parsed.tipoMensagem = parsed.tipoMensagem || 'AVISO_OPERACIONAL';
+        parsed.motivo = 'Sem identificação de veículo, placa ou chassi.';
+      } else {
+        parsed.isAgendamento = true;
+      }
     }
 
     return parsed;
-  } catch (err) {
-    logger.debug(`Aviso ao interpretar com Gemini: ${err.message}`);
+  } catch (parseErr) {
+    logger.debug(`Erro no parse JSON do Gemini: ${parseErr.message}`);
     return null;
   }
 }
 
-module.exports = { init, parseWithGemini };
+/**
+ * Função compatível com o fluxo do bot: retorna os dados do agendamento
+ * se for NOVO_AGENDAMENTO válido, ou null caso contrário.
+ *
+ * @param {string} text - Texto da mensagem
+ * @param {object} [options]
+ * @returns {Promise<object|null>}
+ */
+async function parseWithGemini(text, options = {}) {
+  const result = await classifyWithGemini(text, options);
+  if (!result) return null;
+
+  if (result.isAgendamento === true) {
+    const veiculo = (result.veiculo || '').trim();
+    if (!veiculo || veiculo === '-' || veiculo === 'N/D') {
+      logger.debug('Gemini retornou isAgendamento=true mas sem modelo de veículo válido.');
+      return null;
+    }
+    return result;
+  }
+
+  logger.debug(`Gemini classificou mensagem como [${result.tipoMensagem || 'NÃO-AGENDAMENTO'}]: ${result.motivo || result.motivoRevisao || ''}`);
+  return null;
+}
+
+module.exports = {
+  init,
+  classifyWithGemini,
+  parseWithGemini,
+  buildPrompt,
+};

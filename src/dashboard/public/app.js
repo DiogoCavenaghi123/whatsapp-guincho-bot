@@ -330,11 +330,21 @@ function renderHistoryTable() {
 
   historyTableBody.innerHTML = items
     .map((item, idx) => {
-      let badgeHtml = '<span class="badge badge-muted">Descartado</span>';
-      if (item.status === 'AGENDAMENTO') {
+      let badgeHtml = `<span class="badge badge-muted">${escapeHtml(item.status || 'Descartado')}</span>`;
+      if (item.status === 'AGENDAMENTO' || item.status === 'NOVO_AGENDAMENTO') {
         badgeHtml = '<span class="badge badge-success">Agendamento</span>';
       } else if (item.status === 'DUPLICADO') {
         badgeHtml = '<span class="badge badge-warning">Duplicado</span>';
+      } else if (item.status === 'ALTERACAO') {
+        badgeHtml = '<span class="badge badge-info">Alteração</span>';
+      } else if (item.status === 'CANCELAMENTO') {
+        badgeHtml = '<span class="badge badge-danger">Cancelado</span>';
+      } else if (item.status === 'CONFIRMACAO') {
+        badgeHtml = '<span class="badge badge-muted">Confirmação</span>';
+      } else if (item.status === 'AVISO_OPERACIONAL') {
+        badgeHtml = '<span class="badge badge-muted">Aviso Operac.</span>';
+      } else if (item.status === 'PERGUNTA') {
+        badgeHtml = '<span class="badge badge-muted">Pergunta</span>';
       }
 
       let infoHtml = '';

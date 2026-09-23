@@ -19,6 +19,22 @@ let activeClient = null;
 let activeConfig = null;
 let isScanning = false;
 
+// Buffer deslizante das mensagens recentes para contexto da IA
+const recentMessagesBuffer = [];
+const MAX_RECENT_BUFFER = 6;
+
+function pushRecentMessage(author, text) {
+  if (!text || text.length < 2) return;
+  recentMessagesBuffer.push(`[${author || 'Grupo'}]: ${text.trim().substring(0, 200)}`);
+  if (recentMessagesBuffer.length > MAX_RECENT_BUFFER) {
+    recentMessagesBuffer.shift();
+  }
+}
+
+function getRecentContext() {
+  return recentMessagesBuffer.join('\n');
+}
+
 /**
  * Limpa processos órfãos do Chromium e remove arquivos de lock remanescentes
  * de sessões anteriores que possam ter sido encerradas incorretamente.
@@ -60,8 +76,10 @@ function cleanupStaleBrowserSession() {
  * Cria e inicializa o cliente WhatsApp.
  *
  * @param {object} config
+ * @param {string} config.groupId      — ID do grupo para monitorar
  * @param {string} config.groupId       — ID do grupo para monitorar
  * @param {string} config.spreadsheetId — ID da planilha Google Sheets
+ * @param {string} config.sheetName     — nome da aba na planilha
  * @param {string} [config.sheetName]   — nome da aba na planilha
  * @returns {Client}
  */
@@ -439,7 +457,9 @@ async function handleMessage(message, config, isHistorical = false) {
 
   logger.info(`[DEBUG] Mensagem recebida no grupo Agenda guincho: "${body.substring(0, 50)}..."`);
 
-  // 1. Tenta extrair com o parser rápido (padrão de texto com rótulos)
+  const recentContext = getRecentContext();
+  pushRecentMessage(sender, body);
+
   // 1. Pré-Filtro: Se for ruído operacional (confirmação simples, aviso de guincho livre, etc.)
   if (isOperationalNoise(body)) {
     history.recordMessage({
@@ -447,7 +467,7 @@ async function handleMessage(message, config, isHistorical = false) {
       timestamp: msgDate,
       author: sender,
       body,
-      status: 'DESCARTADO',
+      status: 'AVISO_OPERACIONAL',
       reason: 'Aviso operacional ou confirmação simples (sem pedido de transporte)',
     });
     logger.debug(`Mensagem descartada pelo pré-filtro de ruído operacional.`);
@@ -457,27 +477,43 @@ async function handleMessage(message, config, isHistorical = false) {
   // 2. Parser Regex Rápido
   let agendamento = parseAgendamento(body);
 
-  // 2. Se o formato for livre ou informal, aciona o Gemini AI
-  // 3. Fallback inteligente com Google Gemini AI
+  // 3. Fallback com Classificador Gemini AI (com contexto e data)
+  let classification = null;
   if (!agendamento) {
-    logger.info('Tentando interpretar mensagem com Gemini AI...');
     logger.info('Interpretando mensagem com Gemini AI...');
-    agendamento = await gemini.parseWithGemini(body);
-    if (agendamento) {
+    const dataAtual = msgDate ? new Date(msgDate).toLocaleDateString('pt-BR') : new Date().toLocaleDateString('pt-BR');
+    classification = await gemini.classifyWithGemini(body, {
+      contextoMensagens: recentContext,
+      dataAtual,
+    });
+
+    if (classification && classification.isAgendamento === true) {
+      agendamento = classification;
       logger.success('Gemini AI identificou com sucesso o agendamento! 🤖');
     }
   }
 
   // Se não foi identificado como agendamento
   if (!agendamento) {
-    return;
+    const statusType = classification ? (classification.tipoMensagem || 'DESCARTADO') : 'DESCARTADO';
+    const reasonText = classification
+      ? (classification.motivo || classification.motivoRevisao || classification.tipoMensagem)
+      : 'Conversa ou texto sem veículo/rota identificados';
+
+    if (classification && classification.tipoMensagem === 'ALTERACAO') {
+      logger.warn(`[ALTERAÇÃO] Solicitada mudança no transporte: ${classification.veiculo || ''} (${classification.campoAlterado || ''} -> ${classification.novoValor || ''})`);
+    } else if (classification && classification.tipoMensagem === 'CANCELAMENTO') {
+      logger.warn(`[CANCELAMENTO] Solicitado cancelamento de transporte: ${classification.veiculo || classification.chassiPlaca || ''}`);
+    }
+
     history.recordMessage({
       messageId: msgId,
       timestamp: msgDate,
       author: sender,
       body,
-      status: 'DESCARTADO',
-      reason: 'Conversa ou texto sem veículo/rota identificados',
+      status: statusType,
+      reason: reasonText,
+      extractedData: classification || null,
     });
     return { isAgendamento: false };
   }
