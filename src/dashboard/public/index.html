@@ -8,8 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css">
-  <link rel="stylesheet" href="style.css?v=2.1">
+  <link rel="stylesheet" href="style.css?v=2.3">
 </head>
 <body>
   <div class="app-container">
@@ -38,6 +37,22 @@
           <span>Visão Geral</span>
         </button>
 
+        <button class="nav-tab" data-tab="approvals" role="tab" aria-selected="false">
+          <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M9 11l3 3L22 4"/>
+            <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+          </svg>
+          <span>Aprovações</span>
+          <span class="tab-counter-badge" id="approvalsTabBadge" style="display:none">0</span>
+        </button>
+
+        <button class="nav-tab" data-tab="transparency" role="tab" aria-selected="false">
+          <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+          </svg>
+          <span>Transparência</span>
+        </button>
+
         <button class="nav-tab" data-tab="commands" role="tab" aria-selected="false">
           <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <polygon points="5 3 19 12 5 21 5 3"/>
@@ -64,6 +79,12 @@
 
       <!-- Right Header Actions: Status & Theme Toggle -->
       <div class="nav-actions">
+        <!-- Toggle Envio de Mensagens no Grupo -->
+        <button class="reply-toggle-btn active" id="btnHeaderToggleReplies" title="Clique para ativar/desativar mensagens no grupo">
+          <span class="reply-icon" id="headerReplyIcon">🔔</span>
+          <span id="headerReplyText">Mensagens no Grupo: ON</span>
+        </button>
+
         <div class="connection-pill" id="connectionBadge" title="Status da Conexão com o Bot">
           <span class="status-pulse-dot" id="statusDot"></span>
           <span class="status-label" id="statusLabel">Conectando...</span>
@@ -83,6 +104,69 @@
         </button>
       </div>
     </header>
+
+    <!-- ======================================================== -->
+    <!-- BLOCO SUPERIOR: STATUS DO SISTEMA                        -->
+    <!-- ======================================================== -->
+    <section class="system-status-bar" id="systemStatusBar">
+      <div class="status-summary-grid">
+        <!-- Indicador 1: BOT -->
+        <div class="status-indicator-card" id="topCardBot">
+          <div class="indicator-icon-wrap">
+            <span class="indicator-symbol">🤖</span>
+          </div>
+          <div class="indicator-details">
+            <div class="indicator-title-row">
+              <span class="indicator-label">BOT</span>
+              <span class="indicator-badge badge-running" id="topBotBadge">🟢 Em execução</span>
+            </div>
+            <span class="indicator-sub" id="topBotDetail">Rotina: 07:00 → 19:00</span>
+          </div>
+        </div>
+
+        <!-- Indicador 2: GOOGLE SHEETS -->
+        <div class="status-indicator-card" id="topCardSheet">
+          <div class="indicator-icon-wrap">
+            <span class="indicator-symbol">📊</span>
+          </div>
+          <div class="indicator-details">
+            <div class="indicator-title-row">
+              <span class="indicator-label">GOOGLE SHEETS</span>
+              <span class="indicator-badge badge-connected" id="topSheetBadge">🟢 Conectado</span>
+            </div>
+            <span class="indicator-sub" id="topSheetDetail">Aba ativa: OUTUBRO 2026</span>
+          </div>
+        </div>
+
+        <!-- Indicador 3: WHATSAPP -->
+        <div class="status-indicator-card" id="topCardWhatsApp">
+          <div class="indicator-icon-wrap">
+            <span class="indicator-symbol">💬</span>
+          </div>
+          <div class="indicator-details">
+            <div class="indicator-title-row">
+              <span class="indicator-label">WHATSAPP</span>
+              <span class="indicator-badge badge-silent" id="topWhatsAppBadge">🔕 Modo silencioso</span>
+            </div>
+            <span class="indicator-sub" id="topWhatsAppDetail">Respostas desativadas</span>
+          </div>
+        </div>
+
+        <!-- Indicador 4: SINCRONIZAÇÃO -->
+        <div class="status-indicator-card" id="topCardSync">
+          <div class="indicator-icon-wrap">
+            <span class="indicator-symbol">🔄</span>
+          </div>
+          <div class="indicator-details">
+            <div class="indicator-title-row">
+              <span class="indicator-label">SINCRONIZAÇÃO</span>
+              <span class="indicator-badge indicator-neutral" id="topSyncBadge">Última: --:--:--</span>
+            </div>
+            <span class="indicator-sub" id="topSyncDetail">Latência: -- ms</span>
+          </div>
+        </div>
+      </div>
+    </section>
 
     <!-- Main Views Container -->
     <main class="content-wrapper">
@@ -166,6 +250,21 @@
                 <span class="metric-number text-success" id="cardAgendamentos">0</span>
               </div>
               <span class="metric-hint" id="cardDuplicatesHint">Duplicados prevenidos: 0</span>
+            </div>
+          </div>
+
+          <div class="metric-card highlight-amber" id="cardApprovalsWrapper" style="cursor: pointer;" title="Clique para ver viagens pendentes de aprovação">
+            <div class="metric-header">
+              <span class="metric-title">Aprovações Pendentes</span>
+              <span class="metric-icon-wrap">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg>
+              </span>
+            </div>
+            <div class="metric-body">
+              <div class="metric-value-row">
+                <span class="metric-number text-warning" id="cardPendingApprovals">0</span>
+              </div>
+              <span class="metric-hint">Viagens aguardando decisão</span>
             </div>
           </div>
 
@@ -254,127 +353,447 @@
       </section>
 
       <!-- ======================================================== -->
-      <!-- ABA 2: COMANDOS                                          -->
+      <!-- ABA: APROVAÇÕES PENDENTES                                -->
+      <!-- ======================================================== -->
+      <section class="tab-panel" id="view-approvals" role="tabpanel">
+        <div class="approvals-header-bar">
+          <div>
+            <h2 class="section-title">Aprovações de Transporte e Viagem</h2>
+            <p class="section-description">Mensagens operacionais de motorista/disponibilidade com cobrança de frete detectadas para triagem humana.</p>
+          </div>
+          <div>
+            <button class="btn btn-outline btn-sm" id="btnRefreshApprovals">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-svg"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+              Atualizar Lista
+            </button>
+          </div>
+        </div>
+
+        <div id="approvalsListContainer" class="approvals-grid">
+          <!-- Dynamically populated or empty state -->
+        </div>
+      </section>
+
+      <!-- ======================================================== -->
+      <!-- ABA: TRANSPARÊNCIA DE VALORES & ROTAS                    -->
+      <!-- ======================================================== -->
+      <section class="tab-panel" id="view-transparency" role="tabpanel">
+        <div class="transparency-header-bar">
+          <div>
+            <h2 class="section-title">Painel de Transparência e Memória de Cálculo</h2>
+            <p class="section-description">
+              Visualize a formação detalhada de cada custo de frete, regras de agrupamento de viagens e altere os locais de saída e chegada com atualização instantânea na planilha.
+            </p>
+          </div>
+          <div class="transparency-actions-bar">
+            <div class="tab-select-wrap" style="display: flex; align-items: center; gap: 8px;">
+              <label for="transparencyTabSelect" class="form-label" style="margin: 0; white-space: nowrap;">Aba / Mês:</label>
+              <select id="transparencyTabSelect" class="form-control" style="width: auto; min-width: 170px; padding: 6px 10px;">
+                <option value="">Carregando abas...</option>
+              </select>
+            </div>
+            <button class="btn btn-outline btn-sm" id="btnRefreshTransparency">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-svg"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+              Recarregar
+            </button>
+          </div>
+        </div>
+
+        <!-- Metrics summary cards -->
+        <div class="transparency-metrics-grid">
+          <div class="metric-card">
+            <div class="metric-header">
+              <span class="metric-title">Total de Viagens / Carros</span>
+              <span class="metric-icon-wrap">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="16" height="16" x="4" y="4" rx="2"/><rect width="6" height="6" x="9" y="9" rx="1"/></svg>
+              </span>
+            </div>
+            <div class="metric-body">
+              <div class="metric-value-row">
+                <span class="metric-number" id="transpTotalCount">0</span>
+              </div>
+              <span class="metric-hint">Transportes registrados na aba</span>
+            </div>
+          </div>
+
+          <div class="metric-card">
+            <div class="metric-header">
+              <span class="metric-title">Custo Total de Frete</span>
+              <span class="metric-icon-wrap">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" x2="12" y1="2" y2="22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+              </span>
+            </div>
+            <div class="metric-body">
+              <div class="metric-value-row">
+                <span class="metric-number text-success" id="transpTotalCost">R$ 0,00</span>
+              </div>
+              <span class="metric-hint">Soma do custo unitário faturado</span>
+            </div>
+          </div>
+
+          <div class="metric-card">
+            <div class="metric-header">
+              <span class="metric-title">Viagens Compartilhadas</span>
+              <span class="metric-icon-wrap">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+              </span>
+            </div>
+            <div class="metric-body">
+              <div class="metric-value-row">
+                <span class="metric-number text-highlight" id="transpGroupedCount">0</span>
+              </div>
+              <span class="metric-hint" id="transpGroupedPercent">0% dos fretes com rateio de custos</span>
+            </div>
+          </div>
+
+          <div class="metric-card">
+            <div class="metric-header">
+              <span class="metric-title">Média de Carros / Viagem</span>
+              <span class="metric-icon-wrap">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.4 2.9A3.7 3.7 0 0 0 2 12v4c0 .6.4 1 1 1h2"/><circle cx="7" cy="17" r="2"/><path d="M9 17h6"/><circle cx="17" cy="17" r="2"/></svg>
+              </span>
+            </div>
+            <div class="metric-body">
+              <div class="metric-value-row">
+                <span class="metric-number text-info" id="transpAvgCars">1.0</span>
+              </div>
+              <span class="metric-hint">Aproveitamento médio de prancha</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Table Card -->
+        <div class="card panel-card">
+          <div class="card-header-bar">
+            <div>
+              <h3 class="card-heading">Detalhamento dos Agendamentos e Rotas</h3>
+              <p class="section-description">
+                Clique em <strong>Alterar Rota</strong> para modificar a coleta ou entrega. A planilha será recalculada e sincronizada instantaneamente.
+              </p>
+            </div>
+          </div>
+
+          <!-- Controls / Filter bar -->
+          <div class="filter-toolbar">
+            <div class="segmented-control" role="radiogroup" aria-label="Filtrar viagens">
+              <button class="segment-btn active" data-filter="TODOS" id="btnFilterTranspAll">Todos</button>
+              <button class="segment-btn" data-filter="COMPARTILHADO" id="btnFilterTranspGrouped">Compartilhados (Rateio)</button>
+              <button class="segment-btn" data-filter="INDIVIDUAL" id="btnFilterTranspSingle">Exclusivos (1 Carro)</button>
+            </div>
+
+            <div class="search-field-wrapper">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="search-icon"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+              <input type="text" id="transparencySearchInput" class="search-input" placeholder="Buscar veículo, placa, local de saída, destino...">
+            </div>
+          </div>
+
+          <!-- Transparency Table -->
+          <div class="table-responsive">
+            <table class="corporate-table">
+              <thead>
+                <tr>
+                  <th style="width: 55px; text-align: center;">Linha</th>
+                  <th style="width: 100px;">Data</th>
+                  <th style="width: 180px;">Veículo / Placa</th>
+                  <th>Local de Saída (Origem)</th>
+                  <th>Local de Chegada (Destino)</th>
+                  <th style="width: 250px;">Memória de Cálculo & Motivo</th>
+                  <th style="width: 140px; text-align: right;">Custo Unitário</th>
+                  <th style="width: 105px; text-align: center;">Ações</th>
+                  <th style="width: 50px; text-align: center;">Linha</th>
+                  <th style="width: 90px;">Data</th>
+                  <th style="width: 160px;">Veículo / Placa</th>
+                  <th style="min-width: 220px;">Trajeto & Distância (KM)</th>
+                  <th style="min-width: 210px;">Motivo do Valor Inserido</th>
+                  <th style="min-width: 220px;">Motivo do Valor Inserido</th>
+                  <th style="min-width: 220px;">Motivo do Cálculo (Rateio)</th>
+                  <th style="width: 135px; text-align: right;">Custo Unitário</th>
+                  <th style="width: 95px; text-align: center;">Ações</th>
+                </tr>
+              </thead>
+              <tbody id="transparencyTableBody">
+                <tr>
+                  <td colspan="8" class="table-state-cell">Carregando dados de transparência...</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ======================================================== -->
+      <!-- ABA 2: COMANDOS & OPERAÇÃO                               -->
       <!-- ======================================================== -->
       <section class="tab-panel" id="view-commands" role="tabpanel">
+        
+        <!-- ── GRUPO 1: ⚡ OPERAÇÃO ────────────────────────────── -->
+        <div class="commands-group-header">
+          <div class="group-title-wrap">
+            <span class="group-icon">⚡</span>
+            <div>
+              <h2 class="group-title">OPERAÇÃO</h2>
+              <p class="group-subtitle">Controle de serviço do bot, modo silencioso e recuperação de mensagens.</p>
+            </div>
+          </div>
+        </div>
+
         <div class="commands-layout">
-          <!-- Card 1: Controle de Execução do Bot -->
-          <div class="card command-card">
+          <!-- Card 1: 🤖 Serviço do Bot -->
+          <div class="card command-card hero-command-card">
             <div class="card-header-bar">
               <div>
-                <h3 class="card-heading">Controle do Serviço do Bot</h3>
-                <p class="section-description">Gerenciamento do processo principal de escuta do WhatsApp em segundo plano.</p>
+                <h3 class="card-heading">🤖 Serviço do Bot</h3>
+                <p class="section-description">Status do processo em segundo plano e controle de execução.</p>
               </div>
-              <span class="badge" id="cmdProcessBadge">Verificando</span>
             </div>
 
             <div class="command-content">
-              <div class="status-summary-box">
-                <div class="summary-item">
-                  <span class="summary-label">Status Atual</span>
-                  <strong class="summary-val" id="cmdProcessStatus">--</strong>
+              <div class="service-status-box" id="cmdServiceBox">
+                <div class="service-status-indicator" id="cmdServiceIndicator">
+                  <span class="status-pulse-dot large online" id="cmdServicePulse"></span>
+                  <span class="service-status-text text-success" id="cmdServiceBigText">EM EXECUÇÃO</span>
                 </div>
-                <div class="summary-item">
-                  <span class="summary-label">PID do Processo</span>
-                  <strong class="summary-val" id="cmdProcessPid">--</strong>
-                </div>
-                <div class="summary-item">
-                  <span class="summary-label">Rotina Programada</span>
-                  <strong class="summary-val text-muted">07:00 às 19:00</strong>
+                <div class="service-meta-row">
+                  <span class="service-meta-item">
+                    Rotina automática: <strong>07:00 → 19:00</strong>
+                  </span>
+                  <span class="service-meta-item text-muted" id="cmdProcessPidDisplay">
+                    PID: --
+                  </span>
                 </div>
               </div>
 
-              <div class="btn-row">
-                <button class="btn btn-primary" id="btnCmdStart">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-svg"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-                  Iniciar Bot
-                </button>
-                <button class="btn btn-danger" id="btnCmdStop">
+              <div class="service-action-wrap">
+                <button class="btn btn-danger btn-lg" id="btnCmdStop" style="display: none;">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-svg"><rect width="18" height="18" x="3" y="3" rx="2"/></svg>
-                  Parar Bot
+                  ■ Parar Bot
+                </button>
+                <button class="btn btn-primary btn-lg" id="btnCmdStart" style="display: none;">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-svg"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                  ▶ Iniciar Bot
                 </button>
               </div>
             </div>
           </div>
 
-          <!-- Card 2: Releitura sob Demanda (Re-scan) -->
+          <!-- Card 2: 💬 Respostas no WhatsApp -->
           <div class="card command-card">
             <div class="card-header-bar">
               <div>
-                <h3 class="card-heading">Releitura do Histórico de Conversas</h3>
-                <p class="section-description">Força o bot a reler mensagens passadas do grupo para resgatar agendamentos.</p>
+                <h3 class="card-heading">💬 Respostas no WhatsApp</h3>
+                <p class="section-description">Controle de confirmações e mensagens de resposta no grupo.</p>
+              </div>
+              <span class="badge" id="cmdReplyStatusBadge">Verificando...</span>
+            </div>
+
+            <div class="command-content">
+              <!-- Banner Dinâmico -->
+              <div class="reply-status-banner banner-silent" id="cmdReplyBanner">
+                <div class="banner-title" id="cmdReplyBannerTitle">🔕 MODO SILENCIOSO ATIVO</div>
+                <p class="banner-text" id="cmdReplyBannerDesc">O bot continua lendo, classificando e registrando as mensagens, mas não envia respostas ao grupo.</p>
+              </div>
+
+              <!-- Bloco Registro na Planilha -->
+              <div class="sheet-always-active-box">
+                <div class="active-badge-row">
+                  <span class="label" style="color: var(--text-primary);">Registro na planilha:</span>
+                  <span class="badge badge-success">🟢 SEMPRE ATIVO</span>
+                </div>
+                <p class="text-muted small">As mensagens continuam sendo registradas mesmo quando as respostas do WhatsApp estão desativadas.</p>
+              </div>
+
+              <div class="btn-row" style="margin-top: 14px;">
+                <button class="btn btn-outline" id="btnCmdToggleReplies">
+                  <span id="btnCmdToggleRepliesIcon">🔔</span>
+                  <span id="btnCmdToggleRepliesText">Ativar respostas no grupo</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Card 3: 🔄 Reprocessar mensagens anteriores -->
+          <div class="card command-card" style="grid-column: 1 / -1;">
+            <div class="card-header-bar">
+              <div>
+                <h3 class="card-heading">🔄 Reprocessar mensagens anteriores</h3>
+                <p class="section-description">Procura mensagens anteriores no grupo para identificar e recuperar agendamentos que ainda não foram registrados.</p>
               </div>
             </div>
 
             <div class="command-content">
-              <div class="rescan-form">
-                <label class="radio-option">
-                  <input type="radio" name="rescanPeriod" value="cycle" checked id="radioCycle">
-                  <div class="radio-text">
-                    <strong>Ciclo de Faturamento Vigente</strong>
-                    <span class="text-muted" id="cmdCycleHelp">A partir do dia 24 do ciclo atual</span>
-                  </div>
-                </label>
+              <div class="rescan-selection-block">
+                <span class="selection-legend">Período</span>
+                <div class="rescan-options-grid">
+                  <label class="radio-card active" id="labelRadioCycle">
+                    <input type="radio" name="rescanPeriod" value="cycle" checked id="radioCycle">
+                    <div class="radio-card-content">
+                      <div class="radio-title-row">
+                        <strong>Ciclo de faturamento atual</strong>
+                      </div>
+                      <div class="radio-details">
+                        <span class="cycle-tab-pill" id="rescanCycleTab">OUTUBRO 2026</span>
+                        <span class="cycle-dates-text" id="rescanCycleRange">24/09/2026 → 23/10/2026</span>
+                      </div>
+                    </div>
+                  </label>
 
-                <label class="radio-option">
-                  <input type="radio" name="rescanPeriod" value="custom" id="radioCustom">
-                  <div class="radio-text">
-                    <strong>Data Específica</strong>
-                    <span class="text-muted">A partir de um dia determinado até o presente momento</span>
-                  </div>
-                </label>
-
-                <div class="date-picker-wrap" id="customDateContainer" style="display: none;">
-                  <label class="input-label" for="cmdCustomDate">Data Inicial:</label>
-                  <input type="date" id="cmdCustomDate" class="date-input">
+                  <label class="radio-card" id="labelRadioCustom">
+                    <input type="radio" name="rescanPeriod" value="custom" id="radioCustom">
+                    <div class="radio-card-content">
+                      <div class="radio-title-row">
+                        <strong>Data específica</strong>
+                      </div>
+                      <div class="radio-details">
+                        <span class="text-muted">Selecione data inicial e data final para busca</span>
+                      </div>
+                    </div>
+                  </label>
                 </div>
 
-                <div class="info-alert">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="alert-icon"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg>
-                  <span>O sistema possui proteção contra duplicidade: mensagens já adicionadas à planilha serão ignoradas automaticamente.</span>
+                <!-- Campos de data específica -->
+                <div class="custom-date-fields" id="customDateContainer" style="display: none;">
+                  <div class="form-group" style="margin-bottom:0;">
+                    <label class="form-label" for="cmdCustomDateStart">Data inicial:</label>
+                    <input type="date" id="cmdCustomDateStart" class="form-control">
+                  </div>
+                  <div class="form-group" style="margin-bottom:0;">
+                    <label class="form-label" for="cmdCustomDateEnd">Data final:</label>
+                    <input type="date" id="cmdCustomDateEnd" class="form-control">
+                  </div>
                 </div>
+              </div>
 
-                <button class="btn btn-outline" id="btnCmdRescan">
+              <div class="btn-row" style="margin-top: 14px;">
+                <button class="btn btn-primary" id="btnOpenRescanModal">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-svg"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 21h5v-5"/></svg>
-                  Executar Releitura Agora
+                  🔄 Reprocessar agora
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── GRUPO 2: ⚙️ CONFIGURAÇÃO ────────────────────────── -->
+        <div class="commands-group-header">
+          <div class="group-title-wrap">
+            <span class="group-icon">⚙️</span>
+            <div>
+              <h2 class="group-title">CONFIGURAÇÃO</h2>
+              <p class="group-subtitle">Parâmetros vigentes de ciclo contábil, rotina diária e inteligência artificial.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="commands-layout">
+          <div class="card command-card" style="grid-column: 1 / -1;">
+            <div class="config-summary-grid">
+              <div class="config-item">
+                <span class="config-label">Ciclo de Faturamento</span>
+                <strong class="config-value" id="cfgDisplayCycle">Dia 24 a 23</strong>
+                <span class="config-sub" id="cfgDisplayCycleDates">Aba: OUTUBRO 2026</span>
+              </div>
+              <div class="config-item">
+                <span class="config-label">Rotina Automática</span>
+                <strong class="config-value">07:00 às 19:00</strong>
+                <span class="config-sub">Início e encerramento diários</span>
+              </div>
+              <div class="config-item">
+                <span class="config-label">Inteligência Artificial</span>
+                <strong class="config-value" id="cfgDisplayGeminiModel">gemini-3.6-flash</strong>
+                <span class="config-sub text-success">Modelo ativo e calibrado</span>
+              </div>
+              <div class="config-item">
+                <span class="config-label">Grupo WhatsApp</span>
+                <strong class="config-value text-success">Monitoramento Ativo</strong>
+                <span class="config-sub" id="cfgDisplayGroupId">Conectado</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── GRUPO 3: 🛠️ MANUTENÇÃO ──────────────────────────── -->
+        <div class="commands-group-header">
+          <div class="group-title-wrap">
+            <span class="group-icon">🛠️</span>
+            <div>
+              <h2 class="group-title">MANUTENÇÃO</h2>
+              <p class="group-subtitle">Conectividade com a planilha, integridade de logs e limpeza técnica do sistema.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="commands-layout">
+          <!-- Card Google Sheets -->
+          <div class="card command-card">
+            <div class="card-header-bar">
+              <div>
+                <h3 class="card-heading">📊 Google Sheets</h3>
+                <p class="section-description">Validação de conectividade e leitura da planilha de faturamento.</p>
+              </div>
+              <span class="badge badge-success" id="cmdSheetStatusBadge">🟢 Conectado</span>
+            </div>
+
+            <div class="command-content">
+              <div class="sheets-info-box">
+                <div class="sheets-info-row">
+                  <span class="label" style="color: var(--text-secondary);">Planilha:</span>
+                  <strong id="cmdSheetName">Guincho</strong>
+                </div>
+                <div class="sheets-info-row">
+                  <span class="label" style="color: var(--text-secondary);">Aba ativa:</span>
+                  <strong id="cmdSheetActiveTab" class="text-primary">OUTUBRO 2026</strong>
+                </div>
+                <div class="sheets-info-row">
+                  <span class="label" style="color: var(--text-secondary);">Última sincronização:</span>
+                  <span id="cmdSheetLastSync" class="text-muted">--:--:--</span>
+                </div>
+              </div>
+
+              <div class="btn-row" style="margin-top: 14px;">
+              <div class="btn-row" style="margin-top: 14px; display: flex; gap: 8px; flex-wrap: wrap;">
+                <button class="btn btn-outline" id="btnCmdSyncSheets">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-svg"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>
+                  Testar conexão
+                </button>
+                <button class="btn btn-outline" id="btnCmdRecalcCosts" title="Recalcular custos unitários e quantidade de veículos nas viagens da planilha">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-svg"><circle cx="12" cy="12" r="10"/><path d="m16 10-4 4-2-2"/></svg>
+                  Recalcular Valores & Veículos
                 </button>
               </div>
             </div>
           </div>
 
-          <!-- Card 3: Sincronização & Checagem da Planilha -->
+          <!-- Card Manutenção do Sistema -->
           <div class="card command-card">
             <div class="card-header-bar">
               <div>
-                <h3 class="card-heading">Google Sheets & Conectividade</h3>
-                <p class="section-description">Testar conexão com a API do Google Sheets e validar a criação da aba mensal correta.</p>
-              </div>
-            </div>
-
-            <div class="command-content">
-              <p class="text-muted mb-4">Garante que a planilha de faturamento está acessível e cria a aba do ciclo vigente caso ainda não exista.</p>
-              <button class="btn btn-secondary" id="btnCmdSyncSheets">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-svg"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>
-                Testar Conexão com Google Sheets
-              </button>
-            </div>
-          </div>
-
-          <!-- Card 4: Manutenção de Logs e Cache -->
-          <div class="card command-card">
-            <div class="card-header-bar">
-              <div>
-                <h3 class="card-heading">Manutenção & Limpeza</h3>
+                <h3 class="card-heading">🛠️ Manutenção do Sistema</h3>
                 <p class="section-description">Utilitários para truncamento de logs e liberação de espaço do terminal.</p>
               </div>
             </div>
 
             <div class="command-content">
-              <p class="text-muted mb-4">Limpa o arquivo <code>logs/bot.log</code> para manter o terminal enxuto e de fácil leitura.</p>
-              <button class="btn btn-outline" id="btnCmdClearLogs">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-svg"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
-                Limpar Logs do Arquivo
-              </button>
+              <div class="storage-info-box">
+                <div class="storage-item">
+                  <span class="label" style="color: var(--text-muted); font-size: 0.75rem;">Logs:</span>
+                  <strong id="maintLogSize">0 MB</strong>
+                </div>
+                <div class="storage-item">
+                  <span class="label" style="color: var(--text-muted); font-size: 0.75rem;">Terminal:</span>
+                  <strong id="maintTermLines">0 linhas</strong>
+                </div>
+              </div>
+
+              <div class="btn-row" style="margin-top: 14px;">
+                <button class="btn btn-outline" id="btnOpenClearLogsModal">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-svg"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+                  Limpar logs
+                </button>
+                <button class="btn btn-outline" id="btnOpenClearTermModal">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-svg"><polyline points="4 17 10 11 4 5"/><line x1="12" x2="20" y1="19" y2="19"/></svg>
+                  Limpar terminal
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -485,6 +904,16 @@
                 </div>
                 <span class="badge" id="cfgGeminiBadge">Chave Ativa</span>
               </div>
+
+              <div class="setting-row">
+                <div class="setting-info">
+                  <span class="setting-title">Respostas Automáticas no Grupo</span>
+                  <span class="setting-desc" id="cfgGroupRepliesDesc">O bot responde no grupo confirmando cada agendamento</span>
+                </div>
+                <button class="btn btn-sm btn-outline" id="btnSettingsToggleReplies" style="cursor: pointer;">
+                  <span id="cfgGroupRepliesBadge">🔔 Ativado</span>
+                </button>
+              </div>
             </div>
           </div>
 
@@ -582,11 +1011,277 @@
       </div>
     </div>
 
+    <!-- ======================================================== -->
+    <!-- MODAL: APROVAÇÃO E LANÇAMENTO NA PLANILHA               -->
+    <!-- ======================================================== -->
+    <div id="approvalModal" class="modal-backdrop" aria-hidden="true">
+      <div class="modal-dialog">
+        <div class="modal-header">
+          <div class="modal-title-group">
+            <h3 class="modal-heading">Revisar e Lançar Agendamento</h3>
+            <span class="modal-subheading" id="modalApprovalSub">Confirme ou ajuste os dados extraídos antes do lançamento</span>
+          </div>
+          <button class="modal-close-btn" id="btnCloseApprovalModal" aria-label="Fechar modal">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div class="approval-quote-box" id="modalApprovalQuote" style="margin-bottom: 16px;"></div>
+
+          <form id="approvalForm" onsubmit="return false;">
+            <input type="hidden" id="modalApprovalMsgId">
+
+            <div class="form-grid-2">
+              <div class="form-group">
+                <label class="form-label" for="modalApprData">Data do Transporte</label>
+                <input type="text" class="form-control" id="modalApprData" placeholder="DD/MM/AAAA">
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="modalApprDepto">Departamento</label>
+                <input type="text" class="form-control" id="modalApprDepto" placeholder="Ex: NOVOS / SEMI NOVOS">
+              </div>
+            </div>
+
+            <div class="form-grid-2">
+              <div class="form-group">
+                <label class="form-label" for="modalApprVeiculo">Veículo / Descrição</label>
+                <input type="text" class="form-control" id="modalApprVeiculo" placeholder="Ex: VIAGEM GUINCHO - TONHÃO">
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="modalApprChassiPlaca">Placa / Chassi</label>
+                <input type="text" class="form-control" id="modalApprChassiPlaca" placeholder="-">
+              </div>
+            </div>
+
+            <div class="form-grid-2">
+              <div class="form-group">
+                <label class="form-label" for="modalApprOrigem">Local de Coleta (Origem)</label>
+                <input type="text" class="form-control" id="modalApprOrigem" placeholder="Ex: ITAPIRA">
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="modalApprDestino">Local de Entrega (Destino)</label>
+                <input type="text" class="form-control" id="modalApprDestino" placeholder="Ex: CAMPINAS">
+              </div>
+            </div>
+
+            <div class="form-grid-2">
+              <div class="form-group">
+                <label class="form-label" for="modalApprModalidade">Veículo Transporte</label>
+                <input type="text" class="form-control" id="modalApprModalidade" value="PLATAFORMA">
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="modalApprNotaFiscal">Nota Fiscal</label>
+                <input type="text" class="form-control" id="modalApprNotaFiscal" placeholder="-">
+              </div>
+            </div>
+
+            <div class="form-grid-2" style="background: var(--bg-subtle); padding: 12px; border-radius: var(--radius-md); margin-top: 8px;">
+              <div class="form-group" style="margin-bottom:0;">
+                <label class="form-label" for="modalApprCusto">Custo da Viagem (R$)</label>
+                <input type="text" class="form-control" id="modalApprCusto" placeholder="Ex: 760.61">
+              </div>
+              <div class="form-group" style="margin-bottom:0;">
+                <label class="form-label" for="modalApprQtd">Veículos p/ Viagem</label>
+                <input type="number" min="1" class="form-control" id="modalApprQtd" value="1">
+              </div>
+            </div>
+          </form>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" id="btnDismissApprovalModal">Cancelar</button>
+          <button class="btn btn-primary" id="btnConfirmApprovalModal">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-svg"><polyline points="20 6 9 17 4 12"/></svg>
+            Confirmar e Lançar na Planilha
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ======================================================== -->
+    <!-- MODAL: CONFIRMAR REPROCESSAMENTO                         -->
+    <!-- ======================================================== -->
+    <div id="rescanConfirmModal" class="modal-backdrop" aria-hidden="true">
+      <div class="modal-dialog">
+        <div class="modal-header">
+          <div class="modal-title-group">
+            <h3 class="modal-heading">⚠️ Confirmar reprocessamento</h3>
+            <span class="modal-subheading">O sistema irá analisar novamente as mensagens do período selecionado.</span>
+          </div>
+          <button class="modal-close-btn" id="btnCloseRescanModal" aria-label="Fechar modal">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div class="rescan-summary-details">
+            <div class="rescan-detail-item">
+              <span class="label" style="color: var(--text-muted); font-size: 0.75rem;">Período:</span>
+              <strong id="modalRescanPeriodText">24/09/2026 → 23/10/2026</strong>
+            </div>
+            <div class="rescan-detail-item">
+              <span class="label" style="color: var(--text-muted); font-size: 0.75rem;">Destino:</span>
+              <strong id="modalRescanDestTab" class="text-primary">Aba OUTUBRO 2026</strong>
+            </div>
+          </div>
+
+          <div class="security-banner">
+            <div class="security-banner-icon">🛡️</div>
+            <div>
+              <strong>Proteção contra duplicidade ativa</strong>
+              <p>Mensagens já registradas serão ignoradas automaticamente, garantindo que nenhum agendamento seja duplicado.</p>
+            </div>
+          </div>
+
+          <div id="rescanProgressBox" style="display: none; margin-top: 16px;">
+            <div class="progress-bar-wrap">
+              <div class="progress-bar-fill animated" style="width: 100%;"></div>
+            </div>
+            <p class="progress-text" id="rescanProgressText">🔄 Reprocessando mensagens...</p>
+          </div>
+        </div>
+        <div class="modal-footer" id="rescanModalFooter">
+          <button class="btn btn-secondary" id="btnCancelRescanModal">Cancelar</button>
+          <button class="btn btn-primary" id="btnConfirmRescanModal">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-svg"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 21h5v-5"/></svg>
+            Confirmar reprocessamento
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ======================================================== -->
+    <!-- MODAL: CONFIRMAR LIMPEZA DE LOGS / TERMINAL              -->
+    <!-- ======================================================== -->
+    <div id="cleanConfirmModal" class="modal-backdrop" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-sm">
+        <div class="modal-header">
+          <div class="modal-title-group">
+            <h3 class="modal-heading">⚠️ Confirmar limpeza</h3>
+          </div>
+          <button class="modal-close-btn" id="btnCloseCleanModal" aria-label="Fechar modal">&times;</button>
+        </div>
+        <div class="modal-body">
+          <p id="cleanModalDesc" style="color: var(--text-secondary); line-height: 1.5; margin: 0; font-size: 0.875rem;">Essa ação removerá os registros selecionados. Deseja continuar?</p>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" id="btnCancelCleanModal">Cancelar</button>
+          <button class="btn btn-danger" id="btnConfirmCleanModal">Confirmar limpeza</button>
+        </div>
+      </div>
+    </div>
+    <!-- ======================================================== -->
+    <!-- MODAL: ALTERAR ROTA DE AGENDAMENTO (TRANSPARÊNCIA)       -->
+    <!-- ======================================================== -->
+    <div id="routeEditModal" class="modal-backdrop" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-md">
+        <div class="modal-header">
+          <div class="modal-title-group">
+            <h3 class="modal-heading">✏️ Alterar Rota do Agendamento</h3>
+            <span class="modal-subheading" id="modalRouteSubtitle">Linha da Planilha: #--</span>
+          </div>
+          <button class="modal-close-btn" id="btnCloseRouteModal" aria-label="Fechar modal">&times;</button>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" id="modalRouteRowNumber" value="">
+          <input type="hidden" id="modalRouteTabName" value="">
+
+          <div class="route-summary-box">
+            <div class="route-info-row">
+              <span class="text-muted">Data:</span>
+              <strong id="modalRouteDate">--/--/----</strong>
+            </div>
+            <div class="route-info-row">
+              <span class="text-muted">Veículo:</span>
+              <strong id="modalRouteCar">--</strong>
+            </div>
+            <div class="route-info-row">
+              <span class="text-muted">Placa / Chassi:</span>
+              <strong id="modalRoutePlate">--</strong>
+            </div>
+          </div>
+
+          <form id="routeEditForm" onsubmit="return false;" style="margin-top: 14px; display: flex; flex-direction: column; gap: 14px;">
+            <div class="form-group">
+              <label for="inputOrigem" class="form-label">
+                📍 Local de Saída (Origem / Coleta)
+              </label>
+              <input 
+                type="text" 
+                id="inputOrigem" 
+                class="form-control" 
+                list="dealershipsDatalist" 
+                placeholder="Ex: CODIVE VALINHOS, KENTO MM, DIVEM MM..."
+                required
+                autocomplete="off"
+              >
+              <small class="form-hint" style="color: var(--text-muted); font-size: 0.75rem;">Você pode digitar o nome exato ou apelido da concessionária (ex: <em>kento mm</em>, <em>codive cps</em>).</small>
+            </div>
+
+            <div class="form-group">
+              <label for="inputDestino" class="form-label">
+                🏁 Local de Chegada (Destino / Entrega)
+              </label>
+              <input 
+                type="text" 
+                id="inputDestino" 
+                class="form-control" 
+                list="dealershipsDatalist" 
+                placeholder="Ex: KENTO SJBV, XIAN MM, CODIVE VINHEDO..."
+                required
+                autocomplete="off"
+              >
+              <small class="form-hint" style="color: var(--text-muted); font-size: 0.75rem;">A cidade base é identificada automaticamente para aplicar a tabela de preços oficial do Grupo Hazul.</small>
+            </div>
+
+            <!-- Dynamic calculation preview -->
+            <div class="route-preview-box" id="routePreviewBox">
+              <div class="preview-title">📊 Rota Reconhecida & Recálculo:</div>
+              <div class="preview-route-path" id="routePreviewPath">-- ➔ --</div>
+              <div class="preview-calc-text" id="routePreviewDesc">Os custos serão recalculados e agrupados na planilha com base nas viagens do mesmo dia.</div>
+            </div>
+
+            <div class="security-banner">
+              <div class="security-banner-icon">🔄</div>
+              <div>
+                <strong>Sincronização Imediata com o Google Sheets</strong>
+                <p>Ao salvar, as colunas E (Coleta) e F (Entrega) serão atualizadas na planilha e as fórmulas de custo da viagem (Col I) e rateio (Cols J e K) serão recalculadas automaticamente.</p>
+              </div>
+            </div>
+          </form>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" id="btnCancelRouteModal">Cancelar</button>
+          <button class="btn btn-primary" id="btnSaveRouteModal">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-svg"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+            Salvar e Atualizar Planilha
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Datalist com todas as concessionárias do Grupo Hazul -->
+    <datalist id="dealershipsDatalist">
+      <option value="CODIVE VALINHOS">Valinhos - SP</option>
+      <option value="CODIVE VINHEDO">Vinhedo - SP</option>
+      <option value="CODIVE DOM PEDRO">Campinas - SP (Rodovia D. Pedro)</option>
+      <option value="CODIVE CASTELO">Campinas - SP (Seminovos Castelo)</option>
+      <option value="DIVEM MM">Mogi Mirim - SP (Peugeot / Citroën)</option>
+      <option value="HYMAX MG">Mogi Guaçu - SP (Hyundai)</option>
+      <option value="KENTO MM">Mogi Mirim - SP (Nissan)</option>
+      <option value="KENTO SJBV">São João da Boa Vista - SP (Nissan)</option>
+      <option value="KODYVE MM">Mogi Mirim - SP (Honda)</option>
+      <option value="XIAN MM">Mogi Mirim - SP (Caoa Chery)</option>
+      <option value="XIAN SJBV">São João da Boa Vista - SP (Caoa Chery)</option>
+      <option value="SERVICE LOCADORA">Mogi Mirim - SP (Locadora)</option>
+      <option value="CODIVE ASSINATURA">Campinas - SP</option>
+      <option value="FUNILARIA EXPRESS">Campinas - SP</option>
+      <option value="PERFEITO FUNILARIA">Mogi Mirim - SP</option>
+      <option value="HAZUL POSSE">Santo Antônio de Posse - SP</option>
+      <option value="MOGI BUSINESS CENTER">Mogi Mirim - SP</option>
+      <option value="TYREPLUS MM">Mogi Mirim - SP (Michelin)</option>
+      <option value="TYREPLUS INDAIATUBA">Indaiatuba - SP (Michelin)</option>
+      <option value="HAZUL ITAPIRA">Itapira - SP</option>
+    </datalist>
+
     <!-- Toast Notification Container -->
     <div id="toastContainer" class="toast-container"></div>
   </div>
 
-  <script src="app.js"></script>
-  <script src="app.js?v=2.1"></script>
+  <script src="app.js?v=2.3"></script>
 </body>
 </html>

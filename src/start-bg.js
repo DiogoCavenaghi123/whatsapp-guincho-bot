@@ -26,11 +26,25 @@ console.log('============================================================\n');
 const logOut = fs.openSync(path.resolve(__dirname, '../logs/bot.log'), 'a');
 const logErr = fs.openSync(path.resolve(__dirname, '../logs/bot.err.log'), 'a');
 
-const child = spawn(process.execPath, [path.resolve(__dirname, 'index.js')], {
+function getNodeExecutable() {
+  if (process.execPath && path.basename(process.execPath).toLowerCase().startsWith('node')) {
+    return process.execPath;
+  }
+  const defaultNode = 'C:\\Program Files\\nodejs\\node.exe';
+  if (fs.existsSync(defaultNode)) return defaultNode;
+  return 'node';
+}
+
+const nodeExe = getNodeExecutable();
+const cleanEnv = { ...process.env };
+delete cleanEnv.ELECTRON_RUN_AS_NODE;
+
+const child = spawn(nodeExe, [path.resolve(__dirname, 'index.js')], {
   detached: true,
   stdio: ['ignore', logOut, logErr],
   windowsHide: true,
   cwd: path.resolve(__dirname, '..'),
+  env: cleanEnv,
 });
 
 child.unref();

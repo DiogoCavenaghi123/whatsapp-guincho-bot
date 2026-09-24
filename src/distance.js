@@ -58,6 +58,8 @@ async function getOSRMRoute(originCoord, destCoord) {
   return null;
 }
 
+const dealerships = require('./dealerships');
+
 // Dicionário de locais conhecidos da operação para máxima precisão
 const KNOWN_PLACES = [
   { match: /kento\s+mogi/i, replace: 'Kento Toyota, Mogi Mirim - SP' },
@@ -68,6 +70,14 @@ const KNOWN_PLACES = [
 function normalizeAddress(addr) {
   if (!addr) return '';
   let clean = addr.trim();
+
+  // Se corresponder a uma concessionária/loja oficial do Grupo Hazul,
+  // utiliza o endereço físico exato da unidade para cálculo de rota
+  const dealershipAddr = dealerships.getDealershipAddress(clean);
+  if (dealershipAddr) {
+    return dealershipAddr;
+  }
+
   for (const kp of KNOWN_PLACES) {
     if (kp.match.test(clean)) {
       clean = clean.replace(kp.match, kp.replace);
@@ -196,4 +206,126 @@ async function calculateTripDetails(origin, destination) {
 }
 
 module.exports = { calculateTripDetails };
+// Matriz de distâncias rodoviárias reais (apenas ida) entre as bases operacionais do Grupo Hazul
+const HIGHWAY_DISTANCE_MATRIX = {
+  'MOGI MIRIM|MOGI GUAÇU': 14,
+  'MOGI MIRIM|CAMPINAS': 68,
+  'MOGI MIRIM|VALINHOS': 76,
+  'MOGI MIRIM|VINHEDO': 84,
+  'MOGI MIRIM|SJBV': 72,
+  'MOGI MIRIM|SANTO ANTÔNIO DE POSSE': 22,
+  'MOGI MIRIM|ITAPIRA': 32,
+  'MOGI MIRIM|INDAIATUBA': 92,
+  'MOGI MIRIM|POÇOS DE CALDAS': 105,
+  'MOGI MIRIM|ANDRADAS': 80,
+
+  'MOGI GUAÇU|CAMPINAS': 75,
+  'MOGI GUAÇU|VALINHOS': 82,
+  'MOGI GUAÇU|VINHEDO': 90,
+  'MOGI GUAÇU|SJBV': 62,
+  'MOGI GUAÇU|SANTO ANTÔNIO DE POSSE': 30,
+  'MOGI GUAÇU|ITAPIRA': 38,
+  'MOGI GUAÇU|INDAIATUBA': 98,
+  'MOGI GUAÇU|POÇOS DE CALDAS': 95,
+  'MOGI GUAÇU|ANDRADAS': 70,
+
+  'CAMPINAS|VALINHOS': 14,
+  'CAMPINAS|VINHEDO': 22,
+  'CAMPINAS|SJBV': 138,
+  'CAMPINAS|SANTO ANTÔNIO DE POSSE': 52,
+  'CAMPINAS|ITAPIRA': 75,
+  'CAMPINAS|INDAIATUBA': 28,
+
+  'VALINHOS|VINHEDO': 10,
+  'VALINHOS|SJBV': 145,
+  'VALINHOS|INDAIATUBA': 32,
+
+  'VINHEDO|SJBV': 152,
+  'VINHEDO|INDAIATUBA': 25,
+
+  'SJBV|POÇOS DE CALDAS': 38,
+  'SJBV|ANDRADAS': 35,
+  'SJBV|SANTO ANTÔNIO DE POSSE': 88,
+  'SJBV|ITAPIRA': 78,
+  'SJBV|INDAIATUBA': 160,
+};
+
+function resolveCityName(place) {
+  if (!place) return '';
+  const d = dealerships.identifyDealership(place);
+  if (d && d.cityCode) return d.cityCode;
+  if (d && d.city) {
+    const norm = d.city.toUpperCase();
+    if (norm.includes('SAO JOAO') || norm.includes('SÃO JOÃO')) return 'SJBV';
+    return norm;
+  }
+  const u = String(place).toUpperCase();
+  if (u.includes('VALINHOS') || u.includes('VAL')) return 'VALINHOS';
+  if (u.includes('VINHEDO') || u.includes('VIN')) return 'VINHEDO';
+  if (u.includes('DOM PEDRO') || u.includes('CASTELO') || u.includes('CAMPINAS') || u.includes('CPS') || u.includes('ASSINATURA') || u.includes('EXPRESS')) return 'CAMPINAS';
+  if (u.includes('SAO JOAO') || u.includes('SÃO JOÃO') || u.includes('SJBV') || u.includes('SJ')) return 'SJBV';
+  if (u.includes('MOGI GUACU') || u.includes('MOGI GUAÇU') || u.includes('GUACU') || u.includes('GUAÇU') || u.includes('HYMAX') || u.includes('MG')) return 'MOGI GUAÇU';
+  if (u.includes('POSSE')) return 'SANTO ANTÔNIO DE POSSE';
+  if (u.includes('INDAIATUBA') || u.includes('INDAIA')) return 'INDAIATUBA';
+  if (u.includes('ITAPIRA') || u.includes('ITA')) return 'ITAPIRA';
+  if (u.includes('POCOS') || u.includes('POÇOS')) return 'POÇOS DE CALDAS';
+  if (u.includes('ANDRADAS')) return 'ANDRADAS';
+  if (u.includes('MOGI') || u.includes('MM') || u.includes('DIVEM') || u.includes('KENTO') || u.includes('KODYVE') || u.includes('XIAN') || u.includes('SERVICE') || u.includes('PERFEITO') || u.includes('TYREPLUS')) return 'MOGI MIRIM';
+  return u.trim();
+}
+
+/**
+ * Retorna a distância rodoviária calculada em KM entre duas concessionárias ou cidades.
+ *
+ * @param {string} origin
+ * @param {string} destination
+ * @returns {{ distanceKm: number, distanceRoundTripKm: number, distanceText: string, originCity: string, destCity: string }}
+ */
+function getHighwayDistance(origin, destination) {
+  const c1 = resolveCityName(origin);
+  const c2 = resolveCityName(destination);
+
+  if (!c1 || !c2) {
+    return {
+      distanceKm: 0,
+      distanceRoundTripKm: 0,
+      distanceText: '-- km',
+      originCity: c1 || 'Origem',
+      destCity: c2 || 'Destino',
+    };
+  }
+
+  if (c1 === c2) {
+    return {
+      distanceKm: 8,
+      distanceRoundTripKm: 16,
+      distanceText: '8 km (trajeto local)',
+      originCity: c1,
+      destCity: c2,
+    };
+  }
+
+  const key1 = `${c1}|${c2}`;
+  const key2 = `${c2}|${c1}`;
+  let km = HIGHWAY_DISTANCE_MATRIX[key1] || HIGHWAY_DISTANCE_MATRIX[key2];
+
+  if (!km) {
+    km = 45; // Estimativa média intermunicipal regional
+  }
+
+  return {
+    distanceKm: km,
+    distanceRoundTripKm: km * 2,
+    distanceText: `${km} km (ida) / ${km * 2} km (ida e volta)`,
+    originCity: c1,
+    destCity: c2,
+  };
+}
+
+module.exports = {
+  calculateTripDetails,
+  getHighwayDistance,
+  resolveCityName,
+};
+
 

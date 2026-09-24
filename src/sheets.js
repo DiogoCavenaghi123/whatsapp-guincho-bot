@@ -4,6 +4,8 @@
 
 const { google } = require('googleapis');
 const logger = require('./logger');
+const dealerships = require('./dealerships');
+const distance = require('./distance');
 
 let sheetsClient = null;
 let authClient = null;
@@ -176,6 +178,70 @@ async function resolveSheetTab(spreadsheetId, date = new Date()) {
     logger.warn(
       `Aba "${expectedTabName}" não encontrada na planilha. Abas disponíveis: ${sheetTitles.join(', ')}`
     );
+
+    // 3. Tenta criar automaticamente a aba para o novo ciclo
+    try {
+      logger.info(`Criando automaticamente a aba "${expectedTabName}" para o novo ciclo na planilha...`);
+      await retryWithBackoff(async () => {
+        await sheetsClient.spreadsheets.batchUpdate({
+          spreadsheetId,
+          requestBody: {
+            requests: [
+              {
+                addSheet: {
+                  properties: {
+                    title: expectedTabName,
+                  },
+                },
+              },
+            ],
+          },
+        });
+      });
+
+      const standardHeaders = [
+        'DATA',
+        'DEPARTAMENTO',
+        'CARRO',
+        'PLACAS/ CHASSIS',
+        'LOCAL DE COLETA ',
+        'LOCAL DE ENTREGA ',
+        'VEICULO  TRANSPORTE',
+        'NOTA FISCAL ',
+        'CUSTO DA VIAGEM ',
+        'VEICULOS POR VIAGEM ',
+        'CUSTO UNITARIO POR VIAGEM ',
+        'Faturado/Não Faturado',
+      ];
+
+      await retryWithBackoff(async () => {
+        await sheetsClient.spreadsheets.values.update({
+          spreadsheetId,
+          range: `'${expectedTabName}'!A2:L2`,
+          valueInputOption: 'USER_ENTERED',
+          requestBody: {
+            values: [standardHeaders],
+          },
+        });
+      });
+
+      await getSpreadsheetMetadata(spreadsheetId, true);
+      logger.info(`Aba "${expectedTabName}" criada com sucesso no Google Sheets!`);
+      return expectedTabName;
+    } catch (createErr) {
+      logger.warn(`Não foi possível criar automaticamente a aba "${expectedTabName}": ${createErr.message}`);
+    }
+
+    // 4. Fallback seguro: utiliza a última aba de mês existente para não interromper a operação
+    const monthTabs = sheetTitles.filter((t) =>
+      /^(JANEIRO|FEVEREIRO|MARCO|MARÇO|ABRIL|MAIO|JUNHO|JULHO|AGOSTO|SETEMBRO|OUTUBRO|NOVEMBRO|DEZEMBRO)\s+\d{4}$/i.test(t.trim())
+    );
+    if (monthTabs.length > 0) {
+      const fallbackTab = monthTabs[monthTabs.length - 1];
+      logger.warn(`Utilizando a aba mais recente existente: "${fallbackTab}"`);
+      return fallbackTab;
+    }
+
     return expectedTabName;
   } catch (err) {
     logger.warn(`Erro ao consultar abas da planilha: ${err.message}. Usando "${expectedTabName}"`);
@@ -270,11 +336,247 @@ async function isDuplicate(spreadsheetId, sheetName, chassiPlaca, dataFormatada)
   }
 }
 
+// Cache de custos de transporte da primeira aba (CUSTO TRANSPORTE)
+const DEFAULT_PLATAFORMA_COSTS = new Map([
+  ['SJBV', 900.00],
+  ['CAMPINAS', 760.61],
+  ['VALINHOS', 846.05],
+  ['VINHEDO', 959.96],
+  ['ITAPIRA', 265.95],
+  ['ANDRADAS', 1100.00],
+]);
+let transportCostCache = null;
+
+/**
+ * Normaliza nomes de locais e concessionárias para cidades-base de operação.
+ */
+function extractCity(str) {
+  if (!str || typeof str !== 'string') return '';
+
+  // 1. Prioriza o cadastro oficial de concessionárias do Grupo Hazul
+  const dealershipCity = dealerships.getDealershipCity(str);
+  if (dealershipCity) {
+    return dealershipCity;
+  }
+
+  const s = str.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
+
+  if (s.includes('SJBV') || s.includes('SAO JOAO') || s.includes('BOA VISTA') || s.includes('KENTO SJ') || s.includes('XIAN SJ')) {
+    return 'SJBV';
+  }
+  if (s.includes('MOGI GUACU') || s.includes('MOGI GUAÇU')) {
+    return 'MOGI GUAÇU';
+  }
+  if (s.includes('MOGI') || s.includes('MM') || s.includes('REPARACAO') || s.includes('DUETO') || s.includes('DIVEM') || s.includes('PEUGEOT') || s.includes('CITROEN') || s.includes('PERFEITO')) {
+    return 'MOGI MIRIM';
+  }
+  if (s.includes('CAMPINAS') || s.includes('CODIVE') || s.includes('HZ CAMPINAS') || s.includes('KODYVE')) {
+    return 'CAMPINAS';
+  }
+  if (s.includes('VALINHOS')) return 'VALINHOS';
+  if (s.includes('VINHEDO')) return 'VINHEDO';
+  if (s.includes('ITAPIRA')) return 'ITAPIRA';
+  if (s.includes('ANDRADAS') || s.includes('RICARTI') || s.includes('NOVA VIA')) return 'ANDRADAS';
+  if (s.includes('POCOS') || s.includes('CALDAS') || s.includes('HYMAX')) return 'POÇOS DE CALDAS';
+  if (s.includes('INDAIATUBA')) return 'INDAIATUBA';
+  if (s.includes('JUNDIAI')) return 'JUNDIAÍ';
+
+  return s.trim();
+}
+
+/**
+ * Carrega a tabela de custos da primeira aba (CUSTO TRANSPORTE).
+ */
+async function loadTransportCostTable(spreadsheetId, forceRefresh = false) {
+  if (transportCostCache && !forceRefresh) return transportCostCache;
+
+  try {
+    const res = await retryWithBackoff(async () => {
+      return await sheetsClient.spreadsheets.values.get({
+        spreadsheetId,
+        range: `'CUSTO TRANSPORTE'!A2:N20`,
+      });
+    });
+
+    const values = res.data.values || [];
+    const plataformaCosts = new Map();
+    const cegonhaCosts = new Map();
+
+    let currentSection = 'PLATAFORMA';
+    for (const row of values) {
+      if (!row || row.length === 0) continue;
+      const colB = (row[1] || '').trim().toUpperCase();
+      if (colB === 'PLATAFORMA') {
+        currentSection = 'PLATAFORMA';
+        continue;
+      }
+      if (colB === 'CEGONHA') {
+        currentSection = 'CEGONHA';
+        continue;
+      }
+
+      const destCityRaw = (row[2] || '').trim();
+      if (!destCityRaw) continue;
+      const normCity = extractCity(destCityRaw);
+
+      if (currentSection === 'PLATAFORMA') {
+        const costStr = (row[11] || '').replace(/[^\d,\.]/g, '').replace(',', '.');
+        const costVal = parseFloat(costStr) || 0;
+        if (costVal > 0) {
+          plataformaCosts.set(normCity, costVal);
+        }
+      } else if (currentSection === 'CEGONHA') {
+        const qtyCosts = [];
+        for (let q = 1; q <= 8; q++) {
+          const raw = (row[10 + q] || '').replace(/[^\d,\.]/g, '').replace(',', '.');
+          qtyCosts[q] = parseFloat(raw) || 0;
+        }
+        cegonhaCosts.set(normCity, qtyCosts);
+      }
+    }
+
+    // Valores padrão garantidos caso a primeira aba sofra alterações
+    if (!plataformaCosts.has('SJBV')) plataformaCosts.set('SJBV', 900.00);
+    if (!plataformaCosts.has('CAMPINAS')) plataformaCosts.set('CAMPINAS', 760.61);
+    if (!plataformaCosts.has('VALINHOS')) plataformaCosts.set('VALINHOS', 846.05);
+    if (!plataformaCosts.has('VINHEDO')) plataformaCosts.set('VINHEDO', 959.96);
+    if (!plataformaCosts.has('ITAPIRA')) plataformaCosts.set('ITAPIRA', 265.95);
+    if (!plataformaCosts.has('ANDRADAS')) plataformaCosts.set('ANDRADAS', 1100.00);
+
+    transportCostCache = { plataformaCosts, cegonhaCosts };
+    return transportCostCache;
+  } catch (err) {
+    logger.warn(`Aviso ao ler tabela de custos de transporte: ${err.message}. Usando tabela padrão.`);
+    transportCostCache = {
+      plataformaCosts: new Map([
+        ['SJBV', 900.00],
+        ['CAMPINAS', 760.61],
+        ['VALINHOS', 846.05],
+        ['VINHEDO', 959.96],
+        ['ITAPIRA', 265.95],
+        ['ANDRADAS', 1100.00],
+      ]),
+      cegonhaCosts: new Map(),
+    };
+    return transportCostCache;
+  }
+}
+
+function formatBRL(val) {
+  if (typeof val !== 'number' || isNaN(val)) return 'R$ 0,00';
+  return 'R$ ' + val.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+/**
+ * Resolve o custo total da viagem e o custo unitário por veículo conforme a tabela de preços.
+ */
+function resolveTripCost(origem, destino, modalidade = 'PLATAFORMA', qtd = 1, costTable = null) {
+  const o = extractCity(origem);
+  const d = extractCity(destino);
+
+  let targetCity = (o === 'MOGI MIRIM') ? d : (d === 'MOGI MIRIM' ? o : d);
+  if (!targetCity) targetCity = d || o || 'CAMPINAS';
+
+  const costs = costTable || transportCostCache;
+  let totalTrip = 760.61; // Padrão Campinas
+
+  if (costs && costs.plataformaCosts && costs.plataformaCosts.has(targetCity)) {
+    totalTrip = costs.plataformaCosts.get(targetCity);
+  } else if (DEFAULT_PLATAFORMA_COSTS.has(targetCity)) {
+    totalTrip = DEFAULT_PLATAFORMA_COSTS.get(targetCity);
+  } else if (targetCity === 'ANDRADAS') {
+    totalTrip = 1100.00;
+  } else if (targetCity === 'ITAPIRA' && (o === 'CAMPINAS' || d === 'CAMPINAS')) {
+    totalTrip = 760.61;
+  }
+
+  const effectiveQtd = Math.max(1, Number(qtd) || 1);
+  const unitCost = totalTrip / effectiveQtd;
+
+  return {
+    totalTripCost: totalTrip,
+    unitCost,
+    formattedTotal: formatBRL(totalTrip),
+    formattedUnit: formatBRL(unitCost),
+  };
+}
+
+/**
+ * Determina se dois transportes pertencem à mesma viagem/frete compartilhado:
+ * - Se estão indo para a mesma cidade no mesmo dia
+ * - Se um está indo e outro voltando para o mesmo ponto de partida (ida e volta casada)
+ */
+function areTransportsRelated(t1, t2) {
+  const o1 = extractCity(t1.origem);
+  const d1 = extractCity(t1.destino);
+  const o2 = extractCity(t2.origem);
+  const d2 = extractCity(t2.destino);
+
+  if (!d1 || !d2) return false;
+
+  // 1. Indo para a mesma cidade no mesmo dia
+  if (d1 === d2) return true;
+  // 1. Ida e volta casada (um indo e outro voltando para o mesmo local de partida)
+  if ((o1 === d2 && d1 === o2) || (o1 === o2 && d1 === d2)) return true;
+
+  // 2. Ida e volta casada (um indo e outro voltando para o mesmo local de partida)
+  if (o1 === d2 && d1 === o2) return true;
+  // 2. Indo para a mesma cidade no mesmo dia
+  // Se o destino for a base de retorno (Mogi Mirim), a origem também precisa coincidir
+  if (d1 === d2) {
+    if (d1 === 'MOGI MIRIM') {
+      return o1 === o2;
+    }
+    return true;
+  }
+
+  // 3. Compartilham o mesmo par de cidades
+  if ((o1 === o2 && d1 === d2) || (o1 === d2 && d1 === o2)) return true;
+
+  return false;
+}
+
+/**
+ * Localiza na planilha todas as viagens que compartilham a mesma viagem/transporte no mesmo dia.
+ */
+function findRelatedTransports(rows, dateNorm, newOrigem, newDestino) {
+  const related = [];
+  // Linhas de dados começam na linha 3 (índice 2)
+  for (let i = 2; i < rows.length; i++) {
+    const r = rows[i] || [];
+    const rDate = normalizeDateStr(r[0] || '');
+    if (!rDate || rDate !== dateNorm) continue;
+
+    const rCar = (r[2] || '').trim();
+    const rChassi = (r[3] || '').trim();
+    if (!rCar && !rChassi) continue; // Linha vazia
+
+    const rOrigem = r[4] || '';
+    const rDestino = r[5] || '';
+
+    if (areTransportsRelated(
+      { origem: newOrigem, destino: newDestino },
+      { origem: rOrigem, destino: rDestino }
+    )) {
+      related.push({
+        rowIndex: i,
+        rowNumber: i + 1, // 1-indexed
+        carro: rCar,
+        chassi: rChassi,
+        origem: rOrigem,
+        destino: rDestino,
+        currentQtd: parseInt(r[9]) || 1,
+        currentCusto: r[8] || '',
+      });
+    }
+  }
+  return related;
+}
+
 /**
  * Encontra a primeira linha vazia na planilha (a partir da linha 3)
- * e atualiza com os dados do agendamento (A:H), preservando a formatação
- * existente (fundo verde na data, fundo branco com bordas nos dados,
- * e fórmulas de faturamento nas colunas K e L).
+ * e atualiza com os dados do agendamento (A:L), calculando custo da viagem,
+ * quantidade de veículos agrupados por transporte e fórmulas de faturamento.
  *
  * @param {string}   spreadsheetId — ID da planilha
  * @param {string[]} rowData       — array com os valores das colunas A-H
@@ -307,7 +609,7 @@ async function appendRow(spreadsheetId, rowData, msgDate = new Date()) {
       const carro = (r[2] || '').trim();
       const chassi = (r[3] || '').trim();
 
-      // Linha vazia se não tiene data, carro nem chassi
+      // Linha vazia se não tem data, carro nem chassi
       if (!data && !carro && !chassi) {
         targetRow = i + 1; // 1-indexed
         break;
@@ -318,11 +620,33 @@ async function appendRow(spreadsheetId, rowData, msgDate = new Date()) {
       targetRow = Math.max(rows.length + 1, 3);
     }
 
-    // 2. Atualiza os dados nas colunas A até H sem sobrescrever colunas I a L
+    // 1. Carrega tabela de custos da primeira aba
+    const costTable = await loadTransportCostTable(spreadsheetId);
+
+    // 2. Normaliza data do agendamento
+    const targetDateNorm = normalizeDateStr(dataFormatada);
+
+    // 3. Localiza transportes relacionados no mesmo dia
+    const related = findRelatedTransports(rows, targetDateNorm, rowData[4], rowData[5]);
+    const totalQtd = related.length + 1;
+
+    // 4. Calcula custo da viagem
+    const modalidade = rowData[6] || 'PLATAFORMA';
+    const costInfo = resolveTripCost(rowData[4], rowData[5], modalidade, totalQtd, costTable);
+
+    // 5. Preenche Colunas I a L da nova linha
+    rowData[8] = rowData[8] || costInfo.formattedTotal;
+    rowData[9] = rowData[9] || String(totalQtd);
+    rowData[8] = (typeof rowData[8] === 'number') ? rowData[8] : costInfo.totalTripCost;
+    rowData[9] = totalQtd;
+    rowData[10] = `=I${targetRow}/J${targetRow}`;
+    rowData[11] = rowData[11] || ' NÃO FATURADO';
+
+    // 6. Atualiza os dados nas colunas A até L
     await retryWithBackoff(async () => {
       await sheetsClient.spreadsheets.values.update({
         spreadsheetId,
-        range: `'${sheetName}'!A${targetRow}:H${targetRow}`,
+        range: `'${sheetName}'!A${targetRow}:L${targetRow}`,
         valueInputOption: 'USER_ENTERED',
         requestBody: {
           values: [rowData],
@@ -330,7 +654,7 @@ async function appendRow(spreadsheetId, rowData, msgDate = new Date()) {
       });
     });
 
-    // 3. Atualiza o cache local imediatamente para que a próxima verificação já veja esta linha
+    // 7. Atualiza o cache local imediatamente
     while (rows.length < targetRow) {
       rows.push([]);
     }
@@ -340,14 +664,56 @@ async function appendRow(spreadsheetId, rowData, msgDate = new Date()) {
     }
     rows[targetRow - 1] = currentCachedRow;
 
-    // 4. Garante formatação consistente na linha se necessário
+    // 8. Se há viagens irmãs relacionadas no mesmo dia, atualiza Col I, J, K nelas
+    if (related.length > 0) {
+      const siblingUpdates = [];
+      for (const sib of related) {
+        const sibRow = sib.rowNumber;
+        siblingUpdates.push({
+          range: `'${sheetName}'!I${sibRow}:L${sibRow}`,
+          values: [[
+            costInfo.formattedTotal,
+            String(totalQtd),
+            costInfo.totalTripCost,
+            totalQtd,
+            `=I${sibRow}/J${sibRow}`,
+            ' NÃO FATURADO',
+          ]],
+        });
+        if (rows[sib.rowIndex]) {
+          rows[sib.rowIndex][8] = costInfo.formattedTotal;
+          rows[sib.rowIndex][9] = String(totalQtd);
+          rows[sib.rowIndex][8] = costInfo.totalTripCost;
+          rows[sib.rowIndex][9] = totalQtd;
+          rows[sib.rowIndex][10] = `=I${sibRow}/J${sibRow}`;
+          rows[sib.rowIndex][11] = ' NÃO FATURADO';
+        }
+      }
+
+      try {
+        await retryWithBackoff(async () => {
+          await sheetsClient.spreadsheets.values.batchUpdate({
+            spreadsheetId,
+            requestBody: {
+              valueInputOption: 'USER_ENTERED',
+              data: siblingUpdates,
+            },
+          });
+        });
+        logger.info(`Atualizadas ${related.length} viagem(ns) relacionada(s) no dia ${dataFormatada} para ${totalQtd} veículos.`);
+      } catch (sibErr) {
+        logger.warn(`Aviso ao atualizar viagens irmãs: ${sibErr.message}`);
+      }
+    }
+
+    // 9. Garante formatação visual consistente na linha
     try {
       await ensureRowFormatting(spreadsheetId, sheetName, targetRow, rows[targetRow - 1]);
     } catch (fmtErr) {
       logger.debug(`Aviso ao formatar linha ${targetRow}: ${fmtErr.message}`);
     }
 
-    logger.success(`Linha ${targetRow} preenchida na aba "${sheetName}" ✓`);
+    logger.success(`Linha ${targetRow} preenchida na aba "${sheetName}" (${totalQtd} veículo(s) no transporte, custo ${costInfo.formattedTotal}) ✓`);
     return true;
   } catch (err) {
     logger.error(`Erro ao inserir na planilha (aba ${sheetName}):`, err.message);
@@ -437,7 +803,7 @@ async function ensureRowFormatting(spreadsheetId, sheetName, rowNumber, cachedRo
                 'userEnteredFormat(backgroundColor,horizontalAlignment,verticalAlignment,numberFormat,borders,textFormat)',
             },
           },
-          // Colunas B a H: Branco, bordas, centralizado
+          // Colunas B a L: Branco, bordas, centralizado
           {
             repeatCell: {
               range: {
@@ -445,7 +811,7 @@ async function ensureRowFormatting(spreadsheetId, sheetName, rowNumber, cachedRo
                 startRowIndex: rowIndex,
                 endRowIndex: rowIndex + 1,
                 startColumnIndex: 1,
-                endColumnIndex: 8,
+                endColumnIndex: 12,
               },
               cell: {
                 userEnteredFormat: {
@@ -510,6 +876,337 @@ async function deleteRow(spreadsheetId, sheetName, rowNumber) {
   logger.success(`Linha ${rowNumber} removida com sucesso da aba "${sheetName}"!`);
 }
 
+/**
+ * Recalcula e preenche os custos de viagem, quantidade de veículos agrupados
+ * e fórmulas unitárias para todas as viagens de uma aba (mês).
+ *
+ * @param {string} spreadsheetId
+ * @param {string} sheetName (ex: 'SETEMBRO 2026')
+ * @returns {Promise<{ updatedCount: number, details: Array }>}
+ */
+async function recalculateMonthTransportCosts(spreadsheetId, sheetName) {
+  const costTable = await loadTransportCostTable(spreadsheetId, true);
+  const rows = await getSheetRows(spreadsheetId, sheetName, true);
+
+  if (!rows || rows.length < 3) {
+    return { updatedCount: 0, details: [] };
+  }
+
+  const transports = [];
+  for (let i = 2; i < rows.length; i++) {
+    const r = rows[i] || [];
+    const data = (r[0] || '').trim();
+    const depto = (r[1] || '').trim();
+    const carro = (r[2] || '').trim();
+    const chassi = (r[3] || '').trim();
+    const coleta = (r[4] || '').trim();
+    const entrega = (r[5] || '').trim();
+    const veicTransp = (r[6] || '').trim() || 'PLATAFORMA';
+    const nf = (r[7] || '').trim();
+    const custoViagem = (r[8] || '').trim();
+    const veicPorViagem = (r[9] || '').trim();
+    const custoUnit = (r[10] || '').trim();
+    const faturado = (r[11] || '').trim() || ' NÃO FATURADO';
+
+    if (!data && !carro && !chassi) continue;
+
+    transports.push({
+      rowIndex: i,
+      rowNumber: i + 1,
+      data,
+      depto,
+      carro,
+      chassi,
+      coleta,
+      entrega,
+      veicTransp,
+      nf,
+      custoViagem,
+      veicPorViagem,
+      custoUnit,
+      faturado,
+    });
+  }
+
+  const byDate = new Map();
+  for (const t of transports) {
+    if (!byDate.has(t.data)) byDate.set(t.data, []);
+    byDate.get(t.data).push(t);
+  }
+
+  const updateBatch = [];
+  const details = [];
+
+  for (const [date, list] of byDate.entries()) {
+    const groups = [];
+    for (const t of list) {
+      let foundGroup = null;
+      for (const g of groups) {
+        if (g.some(other => areTransportsRelated(
+          { origem: t.coleta, destino: t.entrega },
+          { origem: other.coleta, destino: other.entrega }
+        ))) {
+          foundGroup = g;
+          break;
+        }
+      }
+      if (foundGroup) {
+        foundGroup.push(t);
+      } else {
+        groups.push([t]);
+      }
+    }
+
+    for (const g of groups) {
+      const qtd = g.length;
+      const first = g[0];
+      const costInfo = resolveTripCost(first.coleta, first.entrega, first.veicTransp, qtd, costTable);
+
+      for (const item of g) {
+        const rowNum = item.rowNumber;
+        const newCusto = costInfo.totalTripCost;
+        const newQtd = qtd;
+        const newFormula = `=I${rowNum}/J${rowNum}`;
+        const newFaturado = item.faturado || ' NÃO FATURADO';
+
+        updateBatch.push({
+          range: `'${sheetName}'!I${rowNum}:L${rowNum}`,
+          values: [[newCusto, newQtd, newFormula, newFaturado]],
+        });
+
+        details.push({
+          rowNumber: rowNum,
+          data: item.data,
+          carro: item.carro,
+          chassi: item.chassi,
+          rota: `${item.coleta} -> ${item.entrega}`,
+          qtd,
+          custoViagem: costInfo.formattedTotal,
+          custoUnit: costInfo.formattedUnit,
+        });
+      }
+    }
+  }
+
+  if (updateBatch.length > 0) {
+    await retryWithBackoff(async () => {
+      await sheetsClient.spreadsheets.values.batchUpdate({
+        spreadsheetId,
+        requestBody: {
+          valueInputOption: 'USER_ENTERED',
+          data: updateBatch,
+        },
+      });
+    });
+
+    sheetRowsCache.delete(sheetName);
+    logger.success(`Recálculo concluído: ${updateBatch.length} linhas atualizadas na aba "${sheetName}".`);
+  }
+
+  return { updatedCount: updateBatch.length, details };
+}
+
+/**
+ * Obtém todos os dados da aba para o Painel de Transparência, incluindo
+ * detalhamento dos motivos de cada valor e memória de cálculo.
+ *
+ * @param {string} spreadsheetId
+ * @param {string} sheetName (ex: 'SETEMBRO 2026')
+ */
+async function getMonthTransparencyData(spreadsheetId, sheetName) {
+  const meta = await getSpreadsheetMetadata(spreadsheetId);
+  const availableMonthTabs = (meta.sheetTitles || []).filter((t) =>
+    /^(JANEIRO|FEVEREIRO|MARCO|MARÇO|ABRIL|MAIO|JUNHO|JULHO|AGOSTO|SETEMBRO|OUTUBRO|NOVEMBRO|DEZEMBRO)\s+\d{4}$/i.test(t.trim())
+  );
+
+  const rows = await getSheetRows(spreadsheetId, sheetName, true);
+
+  const transports = [];
+  let totalCostSum = 0;
+  let sharedVehiclesCount = 0;
+
+  for (let i = 2; i < rows.length; i++) {
+    const r = rows[i] || [];
+    const data = (r[0] || '').trim();
+    const depto = (r[1] || '').trim();
+    const carro = (r[2] || '').trim();
+    const chassi = (r[3] || '').trim();
+    const coleta = (r[4] || '').trim();
+    const entrega = (r[5] || '').trim();
+    const veicTransp = (r[6] || '').trim() || 'PLATAFORMA';
+    const nf = (r[7] || '').trim();
+    const custoViagem = (r[8] || '').trim();
+    const veicPorViagem = parseInt(r[9]) || 1;
+    const custoUnit = (r[10] || '').trim();
+    const faturado = (r[11] || '').trim() || 'NÃO FATURADO';
+
+    if (!data && !carro && !chassi) continue;
+
+    const oCity = extractCity(coleta);
+    const dCity = extractCity(entrega);
+    let targetCity = (oCity === 'MOGI MIRIM') ? dCity : (dCity === 'MOGI MIRIM' ? oCity : dCity);
+    if (!targetCity) targetCity = dCity || oCity || 'CAMPINAS';
+
+    const cleanNum = (str) => {
+      const s = String(str || '').replace(/[^\d,\.]/g, '');
+      if (s.includes(',') && !s.includes('.')) return parseFloat(s.replace(',', '.')) || 0;
+      if (s.includes('.') && s.includes(',')) return parseFloat(s.replace(/\./g, '').replace(',', '.')) || 0;
+      return parseFloat(s) || 0;
+    };
+    const numCustoViagem = cleanNum(custoViagem);
+    const numCustoUnit = cleanNum(custoUnit) || (numCustoViagem / Math.max(1, veicPorViagem));
+
+    totalCostSum += numCustoUnit;
+    if (veicPorViagem > 1) {
+      sharedVehiclesCount++;
+    }
+
+    let motivoTitulo = '';
+    let motivoDetalhe = '';
+    const highway = distance.getHighwayDistance(coleta, entrega);
+    const distanciaKm = highway.distanceKm;
+    const distanciaTexto = highway.distanceText;
+
+    // 1. Motivo do Valor Inserido (Origem do Custo Total da Viagem / Prancha)
+    let motivoValor = '';
+    let motivoValorCurto = '';
+    let motivoValorBadge = '';
+
+    if (numCustoViagem === 900 || targetCity === 'SJBV') {
+      motivoValorBadge = 'Tabela SJBV (R$ 900)';
+      motivoValorCurto = `Tabela Hazul para São João da Boa Vista (${distanciaKm} km)`;
+      motivoValor = `Tabela oficial do Grupo Hazul para a rota Mogi ⟷ São João da Boa Vista (~${distanciaKm} km rodoviários). Custo base total da prancha: R$ 900,00.`;
+    } else if (numCustoViagem === 500 || ['CAMPINAS', 'VALINHOS', 'VINHEDO'].includes(targetCity)) {
+      motivoValorBadge = 'Tabela Campinas (R$ 500)';
+      motivoValorCurto = `Tabela Hazul para Região de Campinas (${distanciaKm} km)`;
+      motivoValor = `Tabela oficial do Grupo Hazul para rota Mogi ⟷ Região de Campinas / Valinhos / Vinhedo (~${distanciaKm} km). Custo base total da prancha: R$ 500,00.`;
+    } else if (numCustoViagem === 180 || oCity === dCity || (oCity.includes('MOGI') && dCity.includes('MOGI'))) {
+      motivoValorBadge = 'Tabela Curta (R$ 180)';
+      motivoValorCurto = `Tabela Local / Curta Distância (${distanciaKm} km)`;
+      motivoValor = `Tabela de deslocamento urbano / intermunicipal curto (~${distanciaKm} km). Custo fixo tabelado: R$ 180,00 por transporte.`;
+    } else if (numCustoViagem > 0) {
+      motivoValorBadge = `Tabela Base (R$ ${numCustoViagem.toFixed(0)})`;
+      motivoValorCurto = `Valor Base Tabelado (${distanciaKm} km)`;
+      motivoValor = `Valor de custo da prancha/guincho registrado para o trajeto (${distanciaKm} km): ${custoViagem || formatBRL(numCustoViagem)}.`;
+    } else {
+      motivoValorBadge = 'Pendente';
+      motivoValorCurto = 'Valor não inserido';
+      motivoValor = 'Custo da viagem ainda pendente de definição na planilha.';
+    }
+
+    // 2. Motivo do Cálculo (Regra de Rateio vs Frete Exclusivo)
+    let motivoCalculo = '';
+    let motivoCalculoCurto = '';
+    let motivoCalculoBadge = '';
+
+    if (veicPorViagem > 1) {
+      motivoTitulo = `Otimização: ${veicPorViagem} veículos agrupados no mesmo transporte`;
+      motivoDetalhe = `Rota calculada com base em ${targetCity} (Custo total: ${custoViagem || formatBRL(numCustoViagem)}). Rateio entre ${veicPorViagem} veículos = ${custoUnit || formatBRL(numCustoUnit)} por veículo.`;
+      motivoCalculoBadge = `Rateio (${veicPorViagem} veículos)`;
+      motivoCalculoCurto = `Rateio proporcional (${custoViagem || formatBRL(numCustoViagem)} ÷ ${veicPorViagem})`;
+      motivoCalculo = `Viagem compartilhada: Custo total da prancha (${custoViagem || formatBRL(numCustoViagem)}) rateado igualmente entre os ${veicPorViagem} veículos transportados no mesmo dia (${data}) = ${custoUnit || formatBRL(numCustoUnit)} por carro.`;
+    } else if (numCustoViagem > 0) {
+      motivoCalculoBadge = 'Frete Exclusivo (1 carro)';
+      motivoCalculoCurto = 'Custo integral (1 único veículo na rota)';
+      motivoCalculo = `Frete exclusivo: Único transporte agendado nesta rota na data ${data}. O veículo assume 100% do custo da viagem (${custoViagem || formatBRL(numCustoViagem)}).`;
+    } else {
+      motivoTitulo = `Frete exclusivo na rota (${targetCity})`;
+      motivoDetalhe = `Transporte único realizado no dia para ${targetCity}. Custo integral conforme tabela: ${custoViagem || formatBRL(numCustoViagem)}.`;
+      motivoCalculoBadge = 'Aguardando Rateio';
+      motivoCalculoCurto = 'Pendente de cálculo';
+      motivoCalculo = 'Aguardando inserção de valor da viagem para cálculo de rateio unitário.';
+    }
+
+    transports.push({
+      rowNumber: i + 1,
+      data,
+      depto,
+      carro,
+      chassi,
+      coleta,
+      entrega,
+      origemCity: oCity,
+      destinoCity: dCity,
+      targetCity,
+      distanciaKm,
+      distanciaTexto,
+      modalidade: veicTransp,
+      notaFiscal: nf,
+      custoViagem: custoViagem || formatBRL(numCustoViagem),
+      veicPorViagem,
+      custoUnit: custoUnit || formatBRL(numCustoUnit),
+      numCustoUnit,
+      faturado,
+      motivoValor,
+      motivoValorCurto,
+      motivoValorBadge,
+      motivoCalculo,
+      motivoCalculoCurto,
+      motivoCalculoBadge,
+      motivoTitulo,
+      motivoDetalhe,
+    });
+  }
+
+  const totalTrips = transports.length;
+  const avgVehicles = totalTrips > 0 ? (transports.reduce((a, b) => a + b.veicPorViagem, 0) / totalTrips).toFixed(1) : '1.0';
+
+  return {
+    sheetName,
+    availableMonthTabs,
+    stats: {
+      totalTrips,
+      totalCostFormatted: formatBRL(totalCostSum),
+      sharedVehiclesCount,
+      avgVehiclesPerTrip: avgVehicles,
+    },
+    transports,
+  };
+}
+
+/**
+ * Atualiza o local de saída (coleta) e chegada (entrega) de uma linha específica da planilha,
+ * e executa o recálculo dos custos da aba para manter os agrupamentos consistentes.
+ *
+ * @param {string} spreadsheetId
+ * @param {string} sheetName (ex: 'SETEMBRO 2026')
+ * @param {number} rowNumber (1-indexed, ex: 14)
+ * @param {string} novaOrigem
+ * @param {string} novoDestino
+ */
+async function updateRowRoute(spreadsheetId, sheetName, rowNumber, novaOrigem, novoDestino) {
+  const finalOrigem = dealerships.standardizeDealershipName(novaOrigem, (novaOrigem || '').trim().toUpperCase());
+  const finalDestino = dealerships.standardizeDealershipName(novoDestino, (novoDestino || '').trim().toUpperCase());
+
+  // 1. Atualiza as colunas E e F da linha na planilha
+  await retryWithBackoff(async () => {
+    await sheetsClient.spreadsheets.values.update({
+      spreadsheetId,
+      range: `'${sheetName}'!E${rowNumber}:F${rowNumber}`,
+      valueInputOption: 'USER_ENTERED',
+      requestBody: {
+        values: [[finalOrigem, finalDestino]],
+      },
+    });
+  });
+
+  // 2. Invalida cache da aba
+  sheetRowsCache.delete(sheetName);
+
+  // 3. Executa o recálculo para atualizar os custos de viagem, agrupamentos e fórmulas da aba
+  const recalcResult = await recalculateMonthTransportCosts(spreadsheetId, sheetName);
+
+  logger.success(`Rota da linha ${rowNumber} na aba "${sheetName}" atualizada para: "${finalOrigem}" -> "${finalDestino}" ✓`);
+
+  return {
+    success: true,
+    rowNumber,
+    finalOrigem,
+    finalDestino,
+    recalcResult,
+  };
+}
+
 module.exports = {
   init,
   ensureHeaders,
@@ -519,4 +1216,12 @@ module.exports = {
   getSpreadsheetMetadata,
   getTargetMonthInfo,
   resolveSheetTab,
+  loadTransportCostTable,
+  resolveTripCost,
+  extractCity,
+  areTransportsRelated,
+  findRelatedTransports,
+  recalculateMonthTransportCosts,
+  getMonthTransparencyData,
+  updateRowRoute,
 };

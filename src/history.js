@@ -75,9 +75,12 @@ function recordMessage(entry) {
     rawTimestamp: entry.timestamp ? new Date(entry.timestamp).getTime() : Date.now(),
     author: entry.author || 'Desconhecido',
     body: (entry.body || '').trim(),
-    status: entry.status || 'DESCARTADO', // 'AGENDAMENTO', 'DUPLICADO', 'DESCARTADO'
+    texto: (entry.texto || entry.body || '').trim(),
+    status: entry.status || 'DESCARTADO', // 'AGENDAMENTO', 'DUPLICADO', 'DESCARTADO', 'PENDENTE_APROVACAO'
     reason: entry.reason || '',
-    extractedData: entry.extractedData || null,
+    tipoMensagem: entry.tipoMensagem || '',
+    dadosExtraidos: entry.dadosExtraidos || entry.extractedData || null,
+    extractedData: entry.extractedData || entry.dadosExtraidos || null,
     sheetRow: entry.sheetRow || null,
     sheetTab: entry.sheetTab || null,
   };
@@ -134,21 +137,49 @@ function getHistory({ status, search, limit = 50, offset = 0 } = {}) {
  */
 function getStats() {
   const list = loadHistory();
-  const agendamentos = list.filter((i) => i.status === 'AGENDAMENTO').length;
+  const agendamentos = list.filter((i) => i.status === 'AGENDAMENTO' || i.status === 'APROVADO').length;
   const duplicados = list.filter((i) => i.status === 'DUPLICADO').length;
   const descartados = list.filter((i) => i.status === 'DESCARTADO').length;
+  const pendentesAprovacao = list.filter((i) => i.status === 'PENDENTE_APROVACAO').length;
 
   return {
     totalLidas: list.length,
     agendamentos,
     duplicados,
     descartados,
+    pendentesAprovacao,
   };
+}
+
+/**
+ * Retorna as mensagens que aguardam aprovação operacional.
+ */
+function getPendingApprovals() {
+  const list = loadHistory();
+  return list
+    .filter((i) => i.status === 'PENDENTE_APROVACAO')
+    .sort((a, b) => (b.rawTimestamp || 0) - (a.rawTimestamp || 0));
+}
+
+/**
+ * Atualiza os dados ou status de uma mensagem específica no histórico.
+ */
+function updateMessage(id, patch) {
+  const history = loadHistory();
+  const idx = history.findIndex((h) => h.id === id);
+  if (idx === -1) return null;
+
+  history[idx] = { ...history[idx], ...patch };
+  saveHistory();
+  return history[idx];
 }
 
 module.exports = {
   recordMessage,
   getHistory,
   getStats,
+  getPendingApprovals,
+  updateMessage,
 };
+
 

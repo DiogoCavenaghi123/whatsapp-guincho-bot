@@ -10,6 +10,7 @@
     "status": "node src/status.js",
     "dashboard": "node src/dashboard/start-dashboard.js",
     "dashboard:bg": "node src/dashboard/start-bg-dashboard.js",
+    "app": "electron src/desktop/main.js",
     "test": "node test/test-ai-classification.js",
     "groups": "node src/list-groups.js",
     "find-group": "node src/find-group.js"
@@ -38,5 +39,9 @@
   },
   "allowScripts": {
     "puppeteer@24.38.0": true
+  },
+  "devDependencies": {
+    "electron": "^44.4.5",
+    "rcedit": "^5.0.2"
   }
 }

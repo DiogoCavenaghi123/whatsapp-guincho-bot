@@ -23,8 +23,10 @@ if (fs.existsSync(pidPath)) {
   } catch (e) {}
 }
 
+const stopAll = process.argv.includes('--all');
+
 const dashPidPath = path.resolve(__dirname, '../.dashboard.pid');
-if (fs.existsSync(dashPidPath)) {
+if (stopAll && fs.existsSync(dashPidPath)) {
   try {
     const dPid = fs.readFileSync(dashPidPath, 'utf8').trim();
     if (dPid) {
@@ -47,13 +49,10 @@ try {
 
   const lines = out.split(/\r?\n/).filter(l => l.trim().length > 0);
   for (const line of lines) {
-    if (line.includes('src/index.js') || line.includes('src\\index.js')) {
-    if (
-      line.includes('src/index.js') ||
-      line.includes('src\\index.js') ||
-      line.includes('src/dashboard/server.js') ||
-      line.includes('src\\dashboard\\server.js')
-    ) {
+    const isBot = line.includes('src/index.js') || line.includes('src\\index.js');
+    const isDashboard = stopAll && (line.includes('src/dashboard/server.js') || line.includes('src\\dashboard\\server.js'));
+
+    if (isBot || isDashboard) {
       const parts = line.split(',');
       const pid = parts[parts.length - 1].trim();
       if (pid && /^\d+$/.test(pid)) {

@@ -70,6 +70,7 @@ Nunca transforme uma data relativa em uma data absoluta sem considerar a data at
 # 2. TIPOS DE MENSAGEM
 Classifique a mensagem em EXATAMENTE um dos seguintes tipos:
 - NOVO_AGENDAMENTO
+- SOLICITACAO_VIAGEM
 - ALTERACAO
 - CANCELAMENTO
 - CONFIRMACAO
@@ -78,7 +79,8 @@ Classifique a mensagem em EXATAMENTE um dos seguintes tipos:
 - PERGUNTA
 - CONVERSA
 
-## NOVO_AGENDAMENTO: É um novo pedido para transportar um veículo específico.
+## NOVO_AGENDAMENTO: É um novo pedido para transportar um veículo específico (requer modelo, placa ou chassi).
+## SOLICITACAO_VIAGEM: É uma ordem de guincho/motorista com trajeto e instrução de cobrança de viagem (ex: "16/09 guincho a disposição do tonhao itapira hz campinas cobrar uma viagem"). Não tem carro de passeio individual, mas tem trajeto e ordem de faturar viagem. Marque: necessitaAprovacao: true, isAgendamento: false, extraia data, motorista, origem, destino, transporte (PLATAFORMA), e observacao.
 ## ALTERACAO: É uma alteração de um transporte já mencionado anteriormente (ex: "Muda para amanhã", "Troca o destino para Mogi"). Não crie um novo agendamento nesses casos.
 ## CANCELAMENTO: Solicitação para cancelar um transporte solicitado anteriormente (ex: "Pode cancelar o Creta", "Não precisa mais buscar esse carro").
 ## CONFIRMACAO: Confirmações ou respostas sobre um transporte já solicitado (ex: "Agendado 17/09", "Confirmado para amanhã", "Pode deixar").
@@ -135,6 +137,28 @@ Valores permitidos: SIM, NÃO, "". Somente marque SIM quando explícito que não
 # 10. ORIGEM E DESTINO
 - origem: Local onde o veículo será coletado
 - destino: Local onde o veículo será entregue
+Padronize sempre concessionárias e unidades do Grupo Hazul para os nomes canônicos oficiais:
+- KENTO ou KENTO MM -> "KENTO MM"
+- KENTO SJ ou KENTO SJBV -> "KENTO SJBV"
+- XIAN ou XIAN MM -> "XIAN MM"
+- XIAN SJ ou XIAN SJBV -> "XIAN SJBV"
+- CODIVE VALINHOS ou CODIVE VAL -> "CODIVE VALINHOS"
+- CODIVE VINHEDO ou CODIVE VIN -> "CODIVE VINHEDO"
+- CODIVE ou CODIVE DOM PEDRO ou CODIVE CAMPINAS ou CODIVE CPS ou HZ CAMPINAS -> "CODIVE DOM PEDRO"
+- CODIVE CASTELO ou SEMINOVOS CASTELO -> "CODIVE CASTELO"
+- DIVEM ou DIVEM MM ou DUETO -> "DIVEM MM"
+- HYMAX ou HYMAX MG ou HYMAX MOGI GUAÇU -> "HYMAX MG"
+- KODYVE ou KODYVE MM ou HONDA MM -> "KODYVE MM"
+- SERVICE LOCADORA ou SERVICE -> "SERVICE LOCADORA"
+- CODIVE ASSINATURA -> "CODIVE ASSINATURA"
+- FUNILARIA EXPRESS ou EXPRESS CAMPINAS -> "FUNILARIA EXPRESS"
+- PERFEITO FUNILARIA ou PERFEITO -> "PERFEITO FUNILARIA"
+- HAZUL POSSE ou HAZUL SANTO ANTONIO DE POSSE -> "HAZUL POSSE"
+- MOGI BUSINESS CENTER ou MBC -> "MOGI BUSINESS CENTER"
+- TYREPLUS ou TYREPLUS MM ou MICHELIN MM -> "TYREPLUS MM"
+- TYREPLUS INDAIATUBA ou MICHELIN INDAIATUBA -> "TYREPLUS INDAIATUBA"
+- HAZUL ITAPIRA ou HZ ITAPIRA -> "HAZUL ITAPIRA"
+Demais locais externos (oficinas, clientes, terceiros), mantenha o nome ou endereço original.
 
 ---
 
@@ -156,6 +180,22 @@ Valores permitidos: PLATAFORMA, CEGONHA (padrão: PLATAFORMA).
 
 # 14. FATURAMENTO
 Valores conhecidos: KENTO MM, KENTO SJBV, XIAN MM, XIAN SJBV, HONDA MM, HYMAX MG, CODIVE CPS, 50% HYMAX - 50% CODIVE, HAZUL ITAPIRA.
+Quando o faturamento mencionar ou deduzir uma concessionária do Grupo Hazul, utilize SEMPRE o nome oficial padronizado:
+- KENTO MM, KENTO SJBV
+- XIAN MM, XIAN SJBV
+- CODIVE VALINHOS, CODIVE VINHEDO, CODIVE DOM PEDRO, CODIVE CASTELO
+- DIVEM MM
+- HYMAX MG
+- KODYVE MM
+- SERVICE LOCADORA
+- CODIVE ASSINATURA
+- FUNILARIA EXPRESS
+- PERFEITO FUNILARIA
+- HAZUL POSSE
+- MOGI BUSINESS CENTER
+- TYREPLUS MM, TYREPLUS INDAIATUBA
+- HAZUL ITAPIRA
+Valores compostos permitidos (ex: "50% HYMAX - 50% CODIVE").
 Se houver dúvida, marque necessitaRevisao: true.
 
 ---
@@ -246,7 +286,8 @@ Se for CONFIRMACAO, AVISO_OPERACIONAL, PERGUNTA ou CONVERSA:
 ---
 
 # 21. EXEMPLOS PRÁTICOS
-- "16/09 guincho a disposição do tonhao..." -> AVISO_OPERACIONAL (isAgendamento: false)
+- "16/09 guincho a disposição do tonhao itapira hz campinas cobrar uma viagem" -> SOLICITACAO_VIAGEM (isAgendamento: false, necessitaAprovacao: true, motorista: "Tonhão", origem: "Itapira", destino: "HZ Campinas", observacao: "cobrar uma viagem")
+- "Guincho à disposição em Mogi" -> AVISO_OPERACIONAL (isAgendamento: false)
 - "Agendado 17/09" -> CONFIRMACAO (isAgendamento: false)
 - "O Creta já chegou?" -> PERGUNTA (isAgendamento: false)
 - "Bom dia pessoal" -> CONVERSA (isAgendamento: false)
@@ -357,6 +398,9 @@ async function classifyWithGemini(text, options = {}) {
       } else {
         parsed.isAgendamento = true;
       }
+    } else if (parsed.tipoMensagem === 'SOLICITACAO_VIAGEM') {
+      parsed.isAgendamento = false;
+      parsed.necessitaAprovacao = true;
     }
 
     return parsed;

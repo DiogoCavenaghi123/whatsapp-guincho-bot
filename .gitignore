@@ -27,3 +27,8 @@ logs/
 .DS_Store
 Thumbs.db
 node
+
+# Builds e binários Desktop
+app-desktop/
+dist/
+build/

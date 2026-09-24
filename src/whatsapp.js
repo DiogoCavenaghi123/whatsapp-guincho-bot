@@ -14,6 +14,7 @@ const { parseAgendamento, toSheetRow, resolveNotaFiscal, isOperationalNoise } = 
 const sheets = require('./sheets');
 const gemini = require('./gemini');
 const history = require('./history');
+const settings = require('./settings');
 
 let activeClient = null;
 let activeConfig = null;
@@ -480,15 +481,10 @@ async function handleMessage(message, config, isHistorical = false) {
   // 2. Parser Regex Rápido
   let agendamento = parseAgendamento(body);
 
-  // 2. Se o formato for livre ou informal, aciona o Gemini AI
-  // 3. Fallback inteligente com Google Gemini AI
   // 3. Fallback com Classificador Gemini AI (com contexto e data)
   let classification = null;
   if (!agendamento) {
-    logger.info('Tentando interpretar mensagem com Gemini AI...');
     logger.info('Interpretando mensagem com Gemini AI...');
-    agendamento = await gemini.parseWithGemini(body);
-    if (agendamento) {
     const dataAtual = msgDate ? new Date(msgDate).toLocaleDateString('pt-BR') : new Date().toLocaleDateString('pt-BR');
     classification = await gemini.classifyWithGemini(body, {
       contextoMensagens: recentContext,
@@ -503,7 +499,20 @@ async function handleMessage(message, config, isHistorical = false) {
 
   // Se não foi identificado como agendamento
   if (!agendamento) {
-    return;
+    // Caso especial: Solicitação de viagem operacional para aprovação humana no painel
+    if (classification && (classification.tipoMensagem === 'SOLICITACAO_VIAGEM' || classification.necessitaAprovacao === true)) {
+      logger.info(`📋 Viagem operacional identificada ("${body.substring(0, 50)}..."). Enviada para Fila de Aprovação no Painel de Controle!`);
+      history.recordMessage({
+        messageId: msgId,
+        timestamp: msgDate,
+        author: sender,
+        body,
+        status: 'PENDENTE_APROVACAO',
+        reason: classification.motivo || 'Ordem de transporte operacional aguardando decisão no painel',
+        extractedData: classification,
+      });
+      return { isAgendamento: false, requiresApproval: true };
+    }
     const statusType = classification ? (classification.tipoMensagem || 'DESCARTADO') : 'DESCARTADO';
     const reasonText = classification
       ? (classification.motivo || classification.motivoRevisao || classification.tipoMensagem)
@@ -520,8 +529,6 @@ async function handleMessage(message, config, isHistorical = false) {
       timestamp: msgDate,
       author: sender,
       body,
-      status: 'DESCARTADO',
-      reason: 'Conversa ou texto sem veículo/rota identificados',
       status: statusType,
       reason: reasonText,
       extractedData: classification || null,
@@ -574,37 +581,41 @@ async function handleMessage(message, config, isHistorical = false) {
       extractedData: agendamento,
     });
 
-    // Resposta no WhatsApp apenas para mensagens em tempo real
+    // Resposta no WhatsApp apenas para mensagens em tempo real (se habilitado nas configurações)
     if (!isHistorical) {
-      try {
-        let replyText = `✅ *AGENDAMENTO REGISTRADO!* 🚛\n\n`;
-        replyText += `🚗 *Veículo:* ${agendamento.veiculo || 'N/D'}`;
-        if (agendamento.cor) replyText += ` (${agendamento.cor})`;
-        replyText += `\n`;
+      if (!settings.isGroupRepliesEnabled()) {
+        logger.info('Envio de resposta no WhatsApp desativado pelo Painel (modo silencioso ativo).');
+      } else {
+        try {
+          let replyText = `✅ *AGENDAMENTO REGISTRADO!* 🚛\n\n`;
+          replyText += `🚗 *Veículo:* ${agendamento.veiculo || 'N/D'}`;
+          if (agendamento.cor) replyText += ` (${agendamento.cor})`;
+          replyText += `\n`;
 
-        if (agendamento.chassiPlaca) replyText += `🔖 *Chassi / Placa:* ${agendamento.chassiPlaca}\n`;
-        if (agendamento.freioEletronico) replyText += `⚡ *Freio Eletrônico:* ${agendamento.freioEletronico}\n`;
-        if (agendamento.veiculoImobilizado) replyText += `🛑 *Veículo Imobilizado:* ${agendamento.veiculoImobilizado}\n`;
+          if (agendamento.chassiPlaca) replyText += `🔖 *Chassi / Placa:* ${agendamento.chassiPlaca}\n`;
+          if (agendamento.freioEletronico) replyText += `⚡ *Freio Eletrônico:* ${agendamento.freioEletronico}\n`;
+          if (agendamento.veiculoImobilizado) replyText += `🛑 *Veículo Imobilizado:* ${agendamento.veiculoImobilizado}\n`;
 
-        const depto = agendamento.departamento || agendamento.deptoEntrega;
-        if (depto) {
-          replyText += `🏢 *Departamento:* ${depto}\n`;
+          const depto = agendamento.departamento || agendamento.deptoEntrega;
+          if (depto) {
+            replyText += `🏢 *Departamento:* ${depto}\n`;
+          }
+
+          replyText += `\n📍 *Origem (Coleta):* ${agendamento.origem}\n`;
+          if (agendamento.responsavelEntrega) replyText += `👤 *Resp. Entrega:* ${agendamento.responsavelEntrega}\n`;
+
+          replyText += `\n🏁 *Destino (Entrega):* ${agendamento.destino}\n`;
+          if (agendamento.responsavelRecebimento) replyText += `🤝 *Resp. Recebimento:* ${agendamento.responsavelRecebimento}\n`;
+
+          if (agendamento.agendarPara) replyText += `📅 *Agendar Para:* ${agendamento.agendarPara}\n`;
+          const nf = resolveNotaFiscal(agendamento);
+          if (nf) replyText += `🧾 *Nota Fiscal:* ${nf}\n`;
+
+          await message.reply(replyText);
+          logger.success('Resposta enviada no grupo do WhatsApp!');
+        } catch (replyErr) {
+          logger.warn(`Não foi possível responder no WhatsApp: ${replyErr.message}`);
         }
-
-        replyText += `\n📍 *Origem (Coleta):* ${agendamento.origem}\n`;
-        if (agendamento.responsavelEntrega) replyText += `👤 *Resp. Entrega:* ${agendamento.responsavelEntrega}\n`;
-
-        replyText += `\n🏁 *Destino (Entrega):* ${agendamento.destino}\n`;
-        if (agendamento.responsavelRecebimento) replyText += `🤝 *Resp. Recebimento:* ${agendamento.responsavelRecebimento}\n`;
-
-        if (agendamento.agendarPara) replyText += `📅 *Agendar Para:* ${agendamento.agendarPara}\n`;
-        const nf = resolveNotaFiscal(agendamento);
-        if (nf) replyText += `🧾 *Nota Fiscal:* ${nf}\n`;
-
-        await message.reply(replyText);
-        logger.success('Resposta enviada no grupo do WhatsApp!');
-      } catch (replyErr) {
-        logger.warn(`Não foi possível responder no WhatsApp: ${replyErr.message}`);
       }
     }
   } else {

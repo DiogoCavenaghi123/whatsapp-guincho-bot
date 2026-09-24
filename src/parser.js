@@ -7,6 +7,7 @@
 // =============================================================
 
 const logger = require('./logger');
+const dealerships = require('./dealerships');
 
 // Cada entrada define:  chave interna  →  regex para capturar o valor
 // A ordem importa: padrões mais específicos vêm antes dos genéricos
@@ -110,6 +111,7 @@ function resolveNotaFiscal(data) {
   const explicit = (data.faturarPara || data.notaFiscal || '').trim();
   if (explicit && explicit.length > 1) {
     return explicit.toUpperCase();
+    return dealerships.standardizeDealershipName(explicit, explicit.toUpperCase());
   }
 
   const matchDealership = (text) => {
@@ -152,10 +154,14 @@ function resolveNotaFiscal(data) {
   // 1. Tenta identificar pela concessionária de Destino
   const destinoMatch = matchDealership(data.destino);
   if (destinoMatch) return destinoMatch;
+  const destinoMatch = dealerships.identifyDealership(data.destino);
+  if (destinoMatch) return destinoMatch.name;
 
   // 2. Se Destino for externo (Valinhos, Andradas, Funilaria terceirizada), usa a Concessionária de Origem
   const origemMatch = matchDealership(data.origem);
   if (origemMatch) return origemMatch;
+  const origemMatch = dealerships.identifyDealership(data.origem);
+  if (origemMatch) return origemMatch.name;
 
   // 3. Fallback: se não achar concessionária cadastrada, usa o texto do destino ou origem limpo
   return (data.destino || data.origem || '').trim().toUpperCase();
@@ -186,7 +192,12 @@ function isOperationalNoise(text) {
     return false;
   }
 
-  // Avisos de motorista / guincho à disposição
+  // Se contém instrução explícita de cobrança ou faturamento de viagem, NÃO é ruído (requer decisão/aprovação)
+  if (/cobrar\s+(?:uma\s+)?(?:viagem|frete|transporte)/i.test(clean)) {
+    return false;
+  }
+
+  // Avisos de motorista / guincho à disposição (sem instrução de cobrança)
   if (/(?:guincho|cegonha)\s+a\s+disposi[çc][ãa]o/i.test(clean)) {
     return true;
   }
@@ -299,6 +310,8 @@ function toSheetRow(data, msgDate) {
   const deptoNormalizado = normalizeDepartment(data.departamento || data.deptoEntrega);
   const transporte = resolveTransporte(data);
   const notaFiscal = resolveNotaFiscal(data);
+  const origemPadronizada = dealerships.standardizeDealershipName(data.origem, data.origem || '');
+  const destinoPadronizado = dealerships.standardizeDealershipName(data.destino, data.destino || '');
 
   return [
     dataFormatada || '',                      // A — DATA
@@ -307,6 +320,8 @@ function toSheetRow(data, msgDate) {
     data.chassiPlaca || '',                   // D — PLACAS/ CHASSIS
     data.origem || '',                        // E — LOCAL DE COLETA
     data.destino || '',                       // F — LOCAL DE ENTREGA
+    origemPadronizada,                        // E — LOCAL DE COLETA
+    destinoPadronizado,                       // F — LOCAL DE ENTREGA
     transporte,                               // G — VEICULO TRANSPORTE (PLATAFORMA ou CEGONHA)
     notaFiscal || '',                         // H — NOTA FISCAL
   ];
