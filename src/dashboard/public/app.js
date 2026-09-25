@@ -1856,7 +1856,302 @@ window.addEventListener('click', (e) => {
   if (routeEditModal && e.target === routeEditModal) {
     routeEditModal.classList.remove('active');
   }
+  if (reportsModal && e.target === reportsModal) {
+    reportsModal.classList.remove('active');
+  }
 });
+
+// ==========================================================================
+//  CENTRAL DE RELATÓRIOS (MENSAL E ANUAL CONSOLIDADO)
+// ==========================================================================
+state.reportType = 'month'; // 'month' | 'year'
+state.reportPeriod = '';
+state.availableReportTabs = [];
+state.availableReportYears = [];
+
+const btnOpenReportsModalNav = document.getElementById('btnOpenReportsModalNav');
+const btnOpenReportsModalTransp = document.getElementById('btnOpenReportsModalTransp');
+const reportsModal = document.getElementById('reportsModal');
+const btnCloseReportsModal = document.getElementById('btnCloseReportsModal');
+const btnCancelReportsModal = document.getElementById('btnCancelReportsModal');
+const btnReportTypeMonth = document.getElementById('btnReportTypeMonth');
+const btnReportTypeYear = document.getElementById('btnReportTypeYear');
+const selectReportPeriod = document.getElementById('selectReportPeriod');
+const lblReportPeriod = document.getElementById('lblReportPeriod');
+const reportPreviewBadge = document.getElementById('reportPreviewBadge');
+const reportPreviewPeriodName = document.getElementById('reportPreviewPeriodName');
+const reportPreviewStatus = document.getElementById('reportPreviewStatus');
+const reportKpiVeiculos = document.getElementById('reportKpiVeiculos');
+const reportKpiTotalCost = document.getElementById('reportKpiTotalCost');
+const reportKpiAvgCost = document.getElementById('reportKpiAvgCost');
+const reportKpiEconomia = document.getElementById('reportKpiEconomia');
+const reportKpiTaxa = document.getElementById('reportKpiTaxa');
+const reportKpiSharingDesc = document.getElementById('reportKpiSharingDesc');
+const reportDeptosList = document.getElementById('reportDeptosList');
+const reportRotasList = document.getElementById('reportRotasList');
+const reportAnnualMonthsWrap = document.getElementById('reportAnnualMonthsWrap');
+const reportAnnualMonthsBody = document.getElementById('reportAnnualMonthsBody');
+const btnExportExcel = document.getElementById('btnExportExcel');
+const btnPrintPDF = document.getElementById('btnPrintPDF');
+
+async function openReportsModal(initialType = 'month', preferredPeriod = null) {
+  if (!reportsModal) return;
+  reportsModal.classList.add('active');
+
+  if (initialType && initialType !== state.reportType) {
+    state.reportType = initialType;
+    if (initialType === 'month') {
+      if (btnReportTypeMonth) btnReportTypeMonth.classList.add('active');
+      if (btnReportTypeYear) btnReportTypeYear.classList.remove('active');
+      if (lblReportPeriod) lblReportPeriod.textContent = 'Selecione o Mês / Aba:';
+      if (reportPreviewBadge) reportPreviewBadge.textContent = 'MENSAL';
+      if (reportAnnualMonthsWrap) reportAnnualMonthsWrap.style.display = 'none';
+    } else {
+      if (btnReportTypeYear) btnReportTypeYear.classList.add('active');
+      if (btnReportTypeMonth) btnReportTypeMonth.classList.remove('active');
+      if (lblReportPeriod) lblReportPeriod.textContent = 'Selecione o Ano Consolidado:';
+      if (reportPreviewBadge) reportPreviewBadge.textContent = 'ANUAL CONSOLIDADO';
+    }
+  }
+
+  // Determina período inicial
+  if (preferredPeriod) {
+    state.reportPeriod = preferredPeriod;
+  } else if (!state.reportPeriod) {
+    if (state.transparencyTab) {
+      state.reportPeriod = state.transparencyTab;
+    } else {
+      state.reportPeriod = 'SETEMBRO 2026';
+    }
+  }
+
+  // Preenche opções no seletor
+  populateReportPeriodOptions();
+
+  // Carrega preview dos dados
+  await loadReportPreview();
+}
+
+function closeReportsModal() {
+  if (reportsModal) reportsModal.classList.remove('active');
+}
+
+function setReportType(type) {
+  if (state.reportType === type) return;
+  state.reportType = type;
+
+  if (type === 'month') {
+    if (btnReportTypeMonth) btnReportTypeMonth.classList.add('active');
+    if (btnReportTypeYear) btnReportTypeYear.classList.remove('active');
+    if (lblReportPeriod) lblReportPeriod.textContent = 'Selecione o Mês / Aba:';
+    if (reportPreviewBadge) reportPreviewBadge.textContent = 'MENSAL';
+    if (reportAnnualMonthsWrap) reportAnnualMonthsWrap.style.display = 'none';
+
+    // Se o período atual for um ano, reverte para mês ativo
+    if (/^\d{4}$/.test(state.reportPeriod)) {
+      state.reportPeriod = state.transparencyTab || (state.availableReportTabs[0] || 'SETEMBRO 2026');
+    }
+  } else {
+    if (btnReportTypeYear) btnReportTypeYear.classList.add('active');
+    if (btnReportTypeMonth) btnReportTypeMonth.classList.remove('active');
+    if (lblReportPeriod) lblReportPeriod.textContent = 'Selecione o Ano Consolidado:';
+    if (reportPreviewBadge) reportPreviewBadge.textContent = 'ANUAL CONSOLIDADO';
+
+    // Extrai o ano do período atual ou usa o ano mais recente
+    const m = state.reportPeriod.match(/\d{4}/);
+    state.reportPeriod = m ? m[0] : (state.availableReportYears[0] || '2026');
+  }
+
+  populateReportPeriodOptions();
+  loadReportPreview();
+}
+
+function populateReportPeriodOptions() {
+  if (!selectReportPeriod) return;
+
+  if (state.reportType === 'month') {
+    let tabs = state.availableReportTabs && state.availableReportTabs.length > 0
+      ? [...state.availableReportTabs]
+      : Array.from(document.querySelectorAll('#transparencyTabSelect option')).map(o => o.value).filter(Boolean);
+
+    if (tabs.length === 0) {
+      tabs = ['OUTUBRO 2026', 'SETEMBRO 2026', 'AGOSTO 2026', 'JULHO 2026', 'JUNHO 2026', 'MAIO 2026', 'ABRIL 2026', 'MARÇO 2026', 'FEVEREIRO 2026', 'JANEIRO 2026'];
+    }
+
+    state.availableReportTabs = tabs;
+
+    if (!tabs.includes(state.reportPeriod)) {
+      state.reportPeriod = tabs[0];
+    }
+
+    selectReportPeriod.innerHTML = tabs.map(t => 
+      `<option value="${escapeHtml(t)}" ${t === state.reportPeriod ? 'selected' : ''}>${escapeHtml(t)}</option>`
+    ).join('');
+  } else {
+    let years = state.availableReportYears;
+    if (!years || years.length === 0) {
+      years = ['2026', '2025'];
+    }
+
+    if (!years.includes(state.reportPeriod)) {
+      state.reportPeriod = years[0];
+    }
+
+    selectReportPeriod.innerHTML = years.map(y => 
+      `<option value="${escapeHtml(y)}" ${y === state.reportPeriod ? 'selected' : ''}>${escapeHtml(y)} (Consolidado)</option>`
+    ).join('');
+  }
+}
+
+async function loadReportPreview() {
+  if (!reportPreviewStatus) return;
+
+  const currentPeriod = selectReportPeriod ? selectReportPeriod.value : state.reportPeriod;
+  state.reportPeriod = currentPeriod;
+
+  if (reportPreviewPeriodName) reportPreviewPeriodName.textContent = currentPeriod;
+  reportPreviewStatus.textContent = 'Carregando dados...';
+  reportPreviewStatus.className = 'report-preview-status text-muted';
+
+  try {
+    const res = await fetch(`/api/reports/data?type=${state.reportType}&period=${encodeURIComponent(currentPeriod)}`);
+    const data = await res.json();
+
+    if (!data.success) {
+      reportPreviewStatus.textContent = `Erro: ${data.message || 'Falha ao buscar dados'}`;
+      reportPreviewStatus.className = 'report-preview-status text-danger';
+      return;
+    }
+
+    // Armazena abas e anos disponíveis retornados pela API
+    if (Array.isArray(data.availableMonthTabs) && data.availableMonthTabs.length > 0) {
+      state.availableReportTabs = data.availableMonthTabs;
+    }
+    if (Array.isArray(data.availableYears) && data.availableYears.length > 0) {
+      state.availableReportYears = data.availableYears;
+    }
+
+    // Atualiza cabeçalho e badge
+    if (reportPreviewBadge) {
+      reportPreviewBadge.textContent = state.reportType === 'year' ? 'ANUAL CONSOLIDADO' : 'MENSAL';
+    }
+    if (reportPreviewPeriodName) {
+      reportPreviewPeriodName.textContent = data.periodSubtitle || currentPeriod;
+    }
+    reportPreviewStatus.textContent = `Atualizado às ${new Date().toLocaleTimeString('pt-BR')}`;
+    reportPreviewStatus.className = 'report-preview-status text-success';
+
+    // Atualiza KPIs
+    const k = data.kpis || {};
+    if (reportKpiVeiculos) reportKpiVeiculos.textContent = k.totalVeiculos || 0;
+    if (reportKpiTotalCost) reportKpiTotalCost.textContent = k.totalCostFormatted || 'R$ 0,00';
+    if (reportKpiAvgCost) reportKpiAvgCost.textContent = `Média ${k.avgCostPerVehicle || 'R$ 0,00'} / carro`;
+    if (reportKpiEconomia) reportKpiEconomia.textContent = k.economiaEstimadaFormatted || 'R$ 0,00';
+    if (reportKpiTaxa) reportKpiTaxa.textContent = (k.taxaCompartilhamento || 0) + '%';
+    if (reportKpiSharingDesc) {
+      reportKpiSharingDesc.textContent = `${k.sharedTripCount || 0} de ${k.totalVeiculos || 0} em viagem compartilhada`;
+    }
+
+    // Atualiza Departamentos
+    if (reportDeptosList) {
+      const topDeptos = (data.departamentos || []).slice(0, 5);
+      if (topDeptos.length === 0) {
+        reportDeptosList.innerHTML = '<span class="text-muted" style="font-size:0.75rem;">Nenhum frete faturado</span>';
+      } else {
+        reportDeptosList.innerHTML = topDeptos.map(d => `
+          <div class="breakdown-item">
+            <span class="breakdown-item-name" title="${escapeHtml(d.name)}">${escapeHtml(d.name)}</span>
+            <div class="breakdown-item-stats">
+              <span>${d.count} un (${d.percentual}%)</span>
+              <strong class="text-primary">${escapeHtml(d.costFormatted)}</strong>
+            </div>
+          </div>
+        `).join('');
+      }
+    }
+
+    // Atualiza Rotas
+    if (reportRotasList) {
+      const topRotas = (data.rotas || []).slice(0, 5);
+      if (topRotas.length === 0) {
+        reportRotasList.innerHTML = '<span class="text-muted" style="font-size:0.75rem;">Nenhuma rota registrada</span>';
+      } else {
+        reportRotasList.innerHTML = topRotas.map(r => `
+          <div class="breakdown-item">
+            <span class="breakdown-item-name" title="${escapeHtml(r.origem)} ➔ ${escapeHtml(r.destino)}">${escapeHtml(r.origem)} ➔ ${escapeHtml(r.destino)}</span>
+            <div class="breakdown-item-stats">
+              <span>${r.count} un</span>
+              <strong>${escapeHtml(r.costFormatted)}</strong>
+            </div>
+          </div>
+        `).join('');
+      }
+    }
+
+    // Se for tipo Anual, mostra tabela com evolução mês a mês
+    if (state.reportType === 'year' && Array.isArray(data.meses) && data.meses.length > 0) {
+      if (reportAnnualMonthsWrap) reportAnnualMonthsWrap.style.display = 'block';
+      if (reportAnnualMonthsBody) {
+        reportAnnualMonthsBody.innerHTML = data.meses.map(m => `
+          <tr>
+            <td style="font-weight: 600;">${escapeHtml(m.name)}</td>
+            <td style="text-align: right;">${m.totalVeiculos}</td>
+            <td style="text-align: right; font-weight: 700;" class="text-primary">${escapeHtml(m.costFormatted)}</td>
+            <td style="text-align: right;" class="text-success">${escapeHtml(m.economiaFormatted)}</td>
+            <td style="text-align: right;">${m.taxaCompartilhamento}%</td>
+          </tr>
+        `).join('');
+      }
+    } else {
+      if (reportAnnualMonthsWrap) reportAnnualMonthsWrap.style.display = 'none';
+    }
+
+  } catch (err) {
+    reportPreviewStatus.textContent = 'Erro de comunicação: ' + err.message;
+    reportPreviewStatus.className = 'report-preview-status text-danger';
+  }
+}
+
+function handleExportExcel() {
+  const period = selectReportPeriod ? selectReportPeriod.value : state.reportPeriod;
+  if (!period) {
+    showToast('Selecione um período para exportar.', 'warning');
+    return;
+  }
+  const url = `/api/reports/export?type=${state.reportType}&period=${encodeURIComponent(period)}`;
+  showToast('📊 Baixando planilha Excel (.csv)...', 'info');
+  window.location.href = url;
+}
+
+function handlePrintPDF() {
+  const period = selectReportPeriod ? selectReportPeriod.value : state.reportPeriod;
+  if (!period) {
+    showToast('Selecione um período para imprimir.', 'warning');
+    return;
+  }
+  const url = `/api/reports/print?type=${state.reportType}&period=${encodeURIComponent(period)}`;
+  showToast('📄 Abrindo relatório executivo para impressão ou PDF...', 'info');
+  window.open(url, '_blank');
+}
+
+// Event Listeners: Central de Relatórios
+if (btnOpenReportsModalNav) {
+  btnOpenReportsModalNav.addEventListener('click', () => openReportsModal('month'));
+}
+if (btnOpenReportsModalTransp) {
+  btnOpenReportsModalTransp.addEventListener('click', () => {
+    const curTab = transparencyTabSelect ? transparencyTabSelect.value : null;
+    openReportsModal('month', curTab);
+  });
+}
+if (btnCloseReportsModal) btnCloseReportsModal.addEventListener('click', closeReportsModal);
+if (btnCancelReportsModal) btnCancelReportsModal.addEventListener('click', closeReportsModal);
+if (btnReportTypeMonth) btnReportTypeMonth.addEventListener('click', () => setReportType('month'));
+if (btnReportTypeYear) btnReportTypeYear.addEventListener('click', () => setReportType('year'));
+if (selectReportPeriod) selectReportPeriod.addEventListener('change', loadReportPreview);
+if (btnExportExcel) btnExportExcel.addEventListener('click', handleExportExcel);
+if (btnPrintPDF) btnPrintPDF.addEventListener('click', handlePrintPDF);
+
 
 // ── Inicialização e Ciclos de Polling ──────────────────────────────────────
 initTheme();

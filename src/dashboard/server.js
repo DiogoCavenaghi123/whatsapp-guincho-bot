@@ -13,6 +13,7 @@ const history = require('../history');
 const sheets = require('../sheets');
 const settings = require('../settings');
 const dealerships = require('../dealerships');
+const reports = require('../reports');
 
 const PORT = process.env.DASHBOARD_PORT || 3000;
 const PROJ_ROOT = path.resolve(__dirname, '../..');
@@ -330,6 +331,79 @@ const server = http.createServer(async (req, res) => {
           res.end(JSON.stringify({ success: false, message: 'Erro ao atualizar rota na planilha: ' + err.message }));
         }
       });
+      return;
+    }
+
+    // ── API: DADOS DO RELATÓRIO (MENSAL OU ANUAL) ──────────────
+    if (pathname === '/api/reports/data' && req.method === 'GET') {
+      try {
+        const sheetId = process.env.GOOGLE_SHEET_ID || process.env.GOOGLE_SPREADSHEET_ID;
+        const credsPath = process.env.GOOGLE_CREDENTIALS_PATH || './credentials.json';
+        await sheets.init(credsPath);
+
+        const type = parsedUrl.query.type || 'month';
+        const period = parsedUrl.query.period || 'SETEMBRO 2026';
+
+        const reportData = await reports.getReportData(sheetId, { type, period });
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ success: true, ...reportData }));
+      } catch (err) {
+        console.error('[Dashboard /api/reports/data Error]:', err);
+        res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ success: false, message: 'Erro ao gerar dados do relatório: ' + err.message }));
+      }
+      return;
+    }
+
+    // ── API: EXPORTAR RELATÓRIO (EXCEL / CSV) ──────────────────
+    if (pathname === '/api/reports/export' && req.method === 'GET') {
+      try {
+        const sheetId = process.env.GOOGLE_SHEET_ID || process.env.GOOGLE_SPREADSHEET_ID;
+        const credsPath = process.env.GOOGLE_CREDENTIALS_PATH || './credentials.json';
+        await sheets.init(credsPath);
+
+        const type = parsedUrl.query.type || 'month';
+        const period = parsedUrl.query.period || 'SETEMBRO 2026';
+
+        const reportData = await reports.getReportData(sheetId, { type, period });
+        const csvContent = reports.generateCSV(reportData);
+
+        const cleanPeriod = String(period).replace(/[^a-zA-Z0-9_-]/g, '_');
+        const filename = `Relatorio_Transportes_Hazul_${cleanPeriod}.csv`;
+
+        res.writeHead(200, {
+          'Content-Type': 'text/csv; charset=utf-8',
+          'Content-Disposition': `attachment; filename="${filename}"`,
+        });
+        res.end(csvContent);
+      } catch (err) {
+        console.error('[Dashboard /api/reports/export Error]:', err);
+        res.writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8' });
+        res.end('Erro ao exportar relatório: ' + err.message);
+      }
+      return;
+    }
+
+    // ── API: PÁGINA IMPRESSA / EXPORTAÇÃO PDF ──────────────────
+    if (pathname === '/api/reports/print' && req.method === 'GET') {
+      try {
+        const sheetId = process.env.GOOGLE_SHEET_ID || process.env.GOOGLE_SPREADSHEET_ID;
+        const credsPath = process.env.GOOGLE_CREDENTIALS_PATH || './credentials.json';
+        await sheets.init(credsPath);
+
+        const type = parsedUrl.query.type || 'month';
+        const period = parsedUrl.query.period || 'SETEMBRO 2026';
+
+        const reportData = await reports.getReportData(sheetId, { type, period });
+        const html = reports.generatePrintHTML(reportData);
+
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.end(html);
+      } catch (err) {
+        console.error('[Dashboard /api/reports/print Error]:', err);
+        res.writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8' });
+        res.end('Erro ao gerar visualização para impressão/PDF: ' + err.message);
+      }
       return;
     }
 

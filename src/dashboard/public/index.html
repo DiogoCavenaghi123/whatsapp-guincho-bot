@@ -79,6 +79,17 @@
 
       <!-- Right Header Actions: Status & Theme Toggle -->
       <div class="nav-actions">
+        <!-- Botão Central de Relatórios -->
+        <button class="btn btn-outline btn-sm btn-nav-reports" id="btnOpenReportsModalNav" title="Gerar Relatórios de Transporte (PDF / Excel)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-svg" style="width: 15px; height: 15px; margin-right: 4px;">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+            <line x1="16" y1="13" x2="8" y2="13"/>
+            <line x1="16" y1="17" x2="8" y2="17"/>
+          </svg>
+          <span>Relatórios</span>
+        </button>
+
         <!-- Toggle Envio de Mensagens no Grupo -->
         <button class="reply-toggle-btn active" id="btnHeaderToggleReplies" title="Clique para ativar/desativar mensagens no grupo">
           <span class="reply-icon" id="headerReplyIcon">🔔</span>
@@ -395,6 +406,15 @@
             <button class="btn btn-outline btn-sm" id="btnRefreshTransparency">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-svg"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
               Recarregar
+            </button>
+            <button class="btn btn-primary btn-sm" id="btnOpenReportsModalTransp" style="display: inline-flex; align-items: center; gap: 6px;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-svg" style="width: 15px; height: 15px;">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                <polyline points="14 2 14 8 20 8"/>
+                <line x1="16" y1="13" x2="8" y2="13"/>
+                <line x1="16" y1="17" x2="8" y2="17"/>
+              </svg>
+              <span>Gerar Relatório</span>
             </button>
           </div>
         </div>
@@ -1243,6 +1263,141 @@
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-svg"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
             Salvar e Atualizar Planilha
           </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ======================================================== -->
+    <!-- MODAL: CENTRAL DE RELATÓRIOS (MENSAL E ANUAL)            -->
+    <!-- ======================================================== -->
+    <div id="reportsModal" class="modal-backdrop" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-lg">
+        <div class="modal-header">
+          <div class="modal-title-group">
+            <h3 class="modal-heading">📊 Central de Relatórios de Fretes & Transporte</h3>
+            <span class="modal-subheading">Relatórios executivos mensais ou anuais consolidados prontos para PDF e Excel</span>
+          </div>
+          <button class="modal-close-btn" id="btnCloseReportsModal" aria-label="Fechar modal">&times;</button>
+        </div>
+        <div class="modal-body">
+          <!-- Seleção de Modo: Mensal ou Anual -->
+          <div class="report-controls-grid">
+            <div class="form-group" style="margin: 0;">
+              <label class="form-label" style="font-weight: 600; margin-bottom: 6px;">Tipo de Período:</label>
+              <div class="report-type-toggle">
+                <button type="button" class="btn-report-type active" id="btnReportTypeMonth" data-type="month">
+                  📅 Relatório Mensal
+                </button>
+                <button type="button" class="btn-report-type" id="btnReportTypeYear" data-type="year">
+                  📆 Relatório Anual Consolidado
+                </button>
+              </div>
+            </div>
+
+            <div class="form-group" id="reportPeriodSelectGroup" style="margin: 0;">
+              <label for="selectReportPeriod" class="form-label" id="lblReportPeriod" style="font-weight: 600; margin-bottom: 6px;">Selecione o Mês / Aba:</label>
+              <select id="selectReportPeriod" class="form-control" style="font-weight: 600;">
+                <option value="">Carregando períodos...</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Pré-visualização com KPIs em tempo real -->
+          <div class="report-preview-section">
+            <div class="report-preview-header">
+              <div class="report-preview-title">
+                <span class="preview-badge" id="reportPreviewBadge">MENSAL</span>
+                <strong id="reportPreviewPeriodName">SETEMBRO 2026</strong>
+              </div>
+              <span class="report-preview-status" id="reportPreviewStatus">Carregando dados...</span>
+            </div>
+
+            <div class="report-kpi-grid">
+              <div class="report-kpi-card">
+                <span class="report-kpi-label">Veículos Faturados</span>
+                <span class="report-kpi-val" id="reportKpiVeiculos">--</span>
+                <span class="report-kpi-sub">Total no período</span>
+              </div>
+              <div class="report-kpi-card">
+                <span class="report-kpi-label">Custo Total de Fretes</span>
+                <span class="report-kpi-val text-primary" id="reportKpiTotalCost">R$ --</span>
+                <span class="report-kpi-sub" id="reportKpiAvgCost">Média R$ -- / carro</span>
+              </div>
+              <div class="report-kpi-card">
+                <span class="report-kpi-label">Economia por Rateio</span>
+                <span class="report-kpi-val text-success" id="reportKpiEconomia">R$ --</span>
+                <span class="report-kpi-sub">Economia com cegonha</span>
+              </div>
+              <div class="report-kpi-card">
+                <span class="report-kpi-label">Taxa de Compartilhamento</span>
+                <span class="report-kpi-val" id="reportKpiTaxa">--%</span>
+                <span class="report-kpi-sub" id="reportKpiSharingDesc">-- viagens em grupo</span>
+              </div>
+            </div>
+
+            <!-- Resumo Departamentos e Rotas -->
+            <div class="report-breakdowns-grid" id="reportBreakdownsContainer">
+              <div class="report-breakdown-card">
+                <div class="breakdown-card-title">🏢 Principais Departamentos / Solicitantes</div>
+                <div id="reportDeptosList" class="breakdown-items-list">
+                  <span class="text-muted" style="font-size: 0.75rem;">Carregando...</span>
+                </div>
+              </div>
+
+              <div class="report-breakdown-card">
+                <div class="breakdown-card-title">📍 Rotas com Maior Movimentação</div>
+                <div id="reportRotasList" class="breakdown-items-list">
+                  <span class="text-muted" style="font-size: 0.75rem;">Carregando...</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Tabela de meses se for Anual -->
+            <div id="reportAnnualMonthsWrap" class="report-annual-months-wrap" style="display: none; margin-top: 14px;">
+              <div class="breakdown-card-title" style="margin-bottom: 8px;">📅 Evolução Mês a Mês do Ano</div>
+              <div class="table-responsive" style="max-height: 180px; overflow-y: auto;">
+                <table class="report-mini-table">
+                  <thead>
+                    <tr>
+                      <th>Mês</th>
+                      <th style="text-align: right;">Veículos</th>
+                      <th style="text-align: right;">Custo Total</th>
+                      <th style="text-align: right;">Economia</th>
+                      <th style="text-align: right;">Taxa Comp.</th>
+                    </tr>
+                  </thead>
+                  <tbody id="reportAnnualMonthsBody">
+                    <!-- Populated dynamically -->
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer report-modal-footer">
+          <div class="report-footer-hint text-muted">
+            Formatos prontos com formatação e layout oficial do Grupo Hazul:
+          </div>
+          <div class="report-footer-actions">
+            <button class="btn btn-secondary" id="btnCancelReportsModal">Fechar</button>
+            <button class="btn btn-outline" id="btnExportExcel" title="Exportar para Excel (.csv com formatação em R$ e separador ponto-e-vírgula)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-svg" style="color: #22c55e;">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                <polyline points="14 2 14 8 20 8"/>
+                <line x1="8" y1="13" x2="16" y2="13"/>
+                <line x1="8" y1="17" x2="16" y2="17"/>
+              </svg>
+              <span>Baixar Excel (.csv)</span>
+            </button>
+            <button class="btn btn-primary" id="btnPrintPDF" title="Gerar PDF Oficial para Impressão ou Salvar como PDF">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-svg">
+                <polyline points="6 9 6 2 18 2 18 9"/>
+                <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/>
+                <rect x="6" y="14" width="12" height="8"/>
+              </svg>
+              <span>Gerar PDF / Imprimir</span>
+            </button>
+          </div>
         </div>
       </div>
     </div>
