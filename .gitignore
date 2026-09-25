@@ -32,3 +32,6 @@ node
 app-desktop/
 dist/
 build/
+*.zip
+temp-dist/
+debug_out*.txt

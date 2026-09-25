@@ -11,6 +11,9 @@
     "dashboard": "node src/dashboard/start-dashboard.js",
     "dashboard:bg": "node src/dashboard/start-bg-dashboard.js",
     "app": "electron src/desktop/main.js",
+    "build:exe": "node scripts/build-desktop-exe.js",
+    "build:zip": "node scripts/export-portable-zip.js",
+    "install:app": "powershell -ExecutionPolicy Bypass -File scripts/install-app.ps1",
     "test": "node test/test-ai-classification.js",
     "groups": "node src/list-groups.js",
     "find-group": "node src/find-group.js"

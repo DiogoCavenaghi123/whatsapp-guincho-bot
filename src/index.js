@@ -40,8 +40,8 @@ async function main() {
           const out = execSync(`tasklist /fi "PID eq ${oldPid}" /fo csv /nh`, {
             stdio: ['ignore', 'pipe', 'ignore'],
             timeout: 3000,
-          }).toString();
-          if (out.includes('node.exe') && Number(oldPid) !== process.pid) {
+          }).toString().toLowerCase();
+          if ((out.includes('node.exe') || out.includes('guinchobot.exe') || out.includes('electron.exe')) && Number(oldPid) !== process.pid) {
             isAlreadyRunning = true;
           }
         } catch (_) {}
@@ -97,18 +97,29 @@ async function main() {
   // ── Inicializar WhatsApp ───────────────────────────────────
   logger.info('Iniciando conexão com WhatsApp...');
   let client = createClient({ groupId, spreadsheetId });
-  try {
-    await client.initialize();
-  } catch (err) {
-    if (err.message && err.message.includes('The browser is already running')) {
-      logger.warn('Detectado bloqueio residual na sessão do Chromium.');
-      logger.info('Liberando travas órfãs e reconectando em 2 segundos...');
-      cleanupStaleBrowserSession();
-      await new Promise((r) => setTimeout(r, 2000));
-      client = createClient({ groupId, spreadsheetId });
+  let initialized = false;
+  let attempts = 0;
+  const maxAttempts = 3;
+
+  while (!initialized && attempts < maxAttempts) {
+    attempts++;
+    try {
+      if (attempts > 1) {
+        logger.info(`Tentativa ${attempts} de ${maxAttempts} para conectar ao WhatsApp...`);
+        cleanupStaleBrowserSession();
+        await new Promise((r) => setTimeout(r, 2500));
+        client = createClient({ groupId, spreadsheetId });
+      }
       await client.initialize();
-    } else {
-      throw err;
+      initialized = true;
+    } catch (err) {
+      logger.warn(`Falha na inicialização do WhatsApp (tentativa ${attempts}/${maxAttempts}): ${err.message}`);
+      if (attempts >= maxAttempts) {
+        throw err;
+      }
+      logger.info('Liberando travas do navegador e tentando reconectar...');
+      cleanupStaleBrowserSession();
+      await new Promise((r) => setTimeout(r, 3000));
     }
   }
 

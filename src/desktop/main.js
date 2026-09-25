@@ -46,18 +46,28 @@ const ICON_PATH = fs.existsSync(path.join(__dirname, '../dashboard/public/assets
   : path.join(__dirname, '../dashboard/public/assets/logo.png');
 
 function startInternalServer() {
-  const http = require('http');
-  const req = http.get(`http://localhost:${PORT}/api/status`, (res) => {
-    log('[Electron] Servidor HTTP já está ativo na porta ' + PORT);
-  });
-  req.on('error', () => {
-    try {
-      serverInstance = require('../dashboard/server');
-      log('[Electron] Servidor interno HTTP inicializado na porta ' + PORT);
-    } catch (err) {
-      log('[Electron] Erro ao carregar servidor interno: ' + (err.stack || err.message));
+  try {
+    serverInstance = require('../dashboard/server');
+    log('[Electron] Servidor interno HTTP inicializado na porta ' + PORT);
+  } catch (err) {
+    log('[Electron] Erro ao carregar servidor interno: ' + (err.stack || err.message));
+  }
+}
+
+async function ensureBotRunning() {
+  try {
+    const server = require('../dashboard/server');
+    const proc = server.getBotProcessInfo ? server.getBotProcessInfo() : null;
+    if (proc && proc.running) {
+      log(`[Electron] Bot já está em execução (PID: ${proc.pid})`);
+      return;
     }
-  });
+    log('[Electron] Bot inativo. Iniciando automaticamente em segundo plano...');
+    const result = await server.startBotProcess();
+    log(`[Electron] Bot iniciado automaticamente: ${JSON.stringify(result)}`);
+  } catch (err) {
+    log('[Electron] Falha ao iniciar bot automaticamente: ' + (err.stack || err.message));
+  }
 }
 
 function createWindow() {
@@ -155,48 +165,93 @@ function createTray() {
     tray = new Tray(icon);
     tray.setToolTip('Grupo Hazul — Bot WhatsApp Guincho');
 
-    const contextMenu = Menu.buildFromTemplate([
-      {
-        label: 'Abrir Painel Principal',
-        click: () => {
-          if (mainWindow) {
-            mainWindow.show();
-            mainWindow.focus();
-          } else {
-            createWindow();
-          }
-        },
-      },
-      { type: 'separator' },
-      {
-        label: 'Recarregar Painel (F5)',
-        click: () => {
-          if (mainWindow) {
-            mainWindow.webContents.session.clearCache().then(() => {
-              mainWindow.webContents.reloadIgnoringCache();
-            });
-          }
-        },
-      },
-      { type: 'separator' },
-      {
-        label: 'Abrir no Navegador Web',
-        click: () => {
-          const { shell } = require('electron');
-          shell.openExternal(`http://localhost:${PORT}`);
-        },
-      },
-      { type: 'separator' },
-      {
-        label: 'Fechar Aplicativo Completamente',
-        click: () => {
-          isQuitting = true;
-          app.quit();
-        },
-      },
-    ]);
+    function updateTrayMenu() {
+      if (!tray || tray.isDestroyed()) return;
 
-    tray.setContextMenu(contextMenu);
+      let isBotRunning = false;
+      try {
+        const server = require('../dashboard/server');
+        const proc = server.getBotProcessInfo ? server.getBotProcessInfo() : null;
+        isBotRunning = Boolean(proc && proc.running);
+      } catch (_) {}
+
+      const contextMenu = Menu.buildFromTemplate([
+        {
+          label: 'Abrir Painel Principal',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.show();
+              mainWindow.focus();
+            } else {
+              createWindow();
+            }
+          },
+        },
+        { type: 'separator' },
+        {
+          label: isBotRunning ? '🟢 Status: Bot Conectado / Ativo' : '🔴 Status: Bot Inativo / Parado',
+          enabled: false,
+        },
+        {
+          label: '▶ Iniciar Bot Agora',
+          enabled: !isBotRunning,
+          click: async () => {
+            try {
+              const server = require('../dashboard/server');
+              await server.startBotProcess();
+              setTimeout(updateTrayMenu, 1000);
+            } catch (err) {
+              log('Erro ao iniciar bot pelo Tray: ' + err.message);
+            }
+          },
+        },
+        {
+          label: '⏹ Parar Bot',
+          enabled: isBotRunning,
+          click: async () => {
+            try {
+              const server = require('../dashboard/server');
+              await server.stopBotProcess();
+              setTimeout(updateTrayMenu, 1000);
+            } catch (err) {
+              log('Erro ao parar bot pelo Tray: ' + err.message);
+            }
+          },
+        },
+        { type: 'separator' },
+        {
+          label: 'Recarregar Painel (F5)',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.session.clearCache().then(() => {
+                mainWindow.webContents.reloadIgnoringCache();
+              });
+            }
+          },
+        },
+        {
+          label: 'Abrir no Navegador Web',
+          click: () => {
+            const { shell } = require('electron');
+            shell.openExternal(`http://localhost:${PORT}`);
+          },
+        },
+        { type: 'separator' },
+        {
+          label: 'Fechar Aplicativo Completamente',
+          click: () => {
+            isQuitting = true;
+            app.quit();
+          },
+        },
+      ]);
+
+      tray.setContextMenu(contextMenu);
+    }
+
+    updateTrayMenu();
+    // Atualiza periodicamente o status na bandeja
+    setInterval(updateTrayMenu, 4000);
 
     tray.on('double-click', () => {
       if (mainWindow) {
@@ -236,17 +291,19 @@ app.on('second-instance', () => {
   }
 });
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   log('app.whenReady fired successfully!');
   try {
+    startInternalServer();
+    log('Internal server initialized.');
     createWindow();
     log('Window created.');
     createTray();
     log('Tray created.');
-    startInternalServer();
-    log('Internal server checked.');
+    await ensureBotRunning();
+    log('Bot checked and running.');
   } catch (err) {
-    log('Error in app.whenReady: ' + err.stack);
+    log('Error in app.whenReady: ' + (err.stack || err.message));
   }
 
   app.on('activate', () => {

@@ -22,17 +22,41 @@ const CMD_FILE = path.join(PROJ_ROOT, '.bot.cmd');
 const LOG_FILE = path.join(PROJ_ROOT, 'logs/bot.log');
 const PUBLIC_DIR = path.join(__dirname, 'public');
 
-function getNodeExecutable() {
-  if (process.execPath && path.basename(process.execPath).toLowerCase().startsWith('node')) {
-    return process.execPath;
+function getNodeExecutableAndEnv() {
+  // 1. Se estiver rodando dentro do Electron (GuinchoBot.exe ou electron.exe):
+  // O Electron possui Node.js embutido de fábrica, ativado via ELECTRON_RUN_AS_NODE=1
+  if (process.versions && process.versions.electron) {
+    const env = { ...process.env, ELECTRON_RUN_AS_NODE: '1' };
+    return { bin: process.execPath, env };
   }
+  // 2. Se o próprio processo atual for um node.exe
+  if (process.execPath && path.basename(process.execPath).toLowerCase().startsWith('node')) {
+    const env = { ...process.env };
+    delete env.ELECTRON_RUN_AS_NODE;
+    return { bin: process.execPath, env };
+  }
+  // 3. Checa node instalado em Program Files
   const defaultNode = 'C:\\Program Files\\nodejs\\node.exe';
-  if (fs.existsSync(defaultNode)) return defaultNode;
+  if (fs.existsSync(defaultNode)) {
+    const env = { ...process.env };
+    delete env.ELECTRON_RUN_AS_NODE;
+    return { bin: defaultNode, env };
+  }
+  // 4. Fallback no PATH via where.exe
   try {
     const out = execSync('where.exe node', { encoding: 'utf8', timeout: 2000 }).trim().split(/\r?\n/)[0];
-    if (out && fs.existsSync(out)) return out;
+    if (out && fs.existsSync(out)) {
+      const env = { ...process.env };
+      delete env.ELECTRON_RUN_AS_NODE;
+      return { bin: out, env };
+    }
   } catch (_) {}
-  return 'node';
+  // 5. Fallback final: usa o próprio process.execPath com ELECTRON_RUN_AS_NODE
+  return { bin: process.execPath, env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' } };
+}
+
+function getNodeExecutable() {
+  return getNodeExecutableAndEnv().bin;
 }
 
 /**
@@ -50,24 +74,22 @@ function getBotProcessInfo() {
     return { running: false, pid: null, startedAt: null };
   }
 
-  // 1. Checagem nativa ultra-rápida (0.01ms) sem invocar processos externos
+  // 1. Checagem nativa se processo responde
   try {
     process.kill(pid, 0);
   } catch (e) {
-    // Processo definitivamente não existe
-    // Processo definitivamente não existe - limpa o arquivo stale
     try { fs.unlinkSync(PID_FILE); } catch (_) {}
     return { running: false, pid: null, startedAt: null };
   }
 
-  // 2. Se o PID respondeu ao sinal, confirma que é o node.exe
+  // 2. Se o PID respondeu ao sinal, confirma que é o processo do bot (node, guinchobot ou electron)
   try {
     const out = execSync(`tasklist /fi "PID eq ${pid}" /fo csv /nh`, {
       stdio: ['ignore', 'pipe', 'ignore'],
       timeout: 1000,
-    }).toString();
+    }).toString().toLowerCase();
 
-    if (out.includes('node.exe')) {
+    if (out.includes('node.exe') || out.includes('guinchobot.exe') || out.includes('electron.exe')) {
       return { running: true, pid };
     } else {
       try { fs.unlinkSync(PID_FILE); } catch (_) {}
@@ -76,8 +98,60 @@ function getBotProcessInfo() {
   } catch (e) {
     return { running: true, pid };
   }
+}
 
-  return { running: false, pid: null, startedAt: null };
+function startBotProcess() {
+  return new Promise((resolve, reject) => {
+    const proc = getBotProcessInfo();
+    if (proc.running) {
+      return resolve({ success: false, message: `O bot já está em execução (PID: ${proc.pid})!`, pid: proc.pid });
+    }
+
+    if (fs.existsSync(PID_FILE)) {
+      try { fs.unlinkSync(PID_FILE); } catch (_) {}
+    }
+
+    try {
+      const { bin: nodeBin, env: runEnv } = getNodeExecutableAndEnv();
+      const indexScript = path.join(PROJ_ROOT, 'src/index.js');
+      const logOut = fs.openSync(LOG_FILE, 'a');
+      const errLogFile = path.join(PROJ_ROOT, 'logs/bot.err.log');
+      const logErr = fs.openSync(errLogFile, 'a');
+
+      const child = spawn(nodeBin, [indexScript], {
+        detached: true,
+        stdio: ['ignore', logOut, logErr],
+        windowsHide: true,
+        cwd: PROJ_ROOT,
+        env: runEnv,
+      });
+
+      child.unref();
+
+      if (child.pid) {
+        fs.writeFileSync(PID_FILE, String(child.pid), 'utf8');
+      }
+
+      resolve({ success: true, message: `Bot iniciado com sucesso! (PID: ${child.pid})`, pid: child.pid });
+    } catch (err) {
+      reject(err);
+    }
+  });
+}
+
+function stopBotProcess() {
+  return new Promise((resolve) => {
+    try {
+      const { bin: nodeBin, env: runEnv } = getNodeExecutableAndEnv();
+      const stopScript = path.join(PROJ_ROOT, 'src/stop.js');
+      try {
+        execSync(`"${nodeBin}" "${stopScript}"`, { stdio: 'ignore', timeout: 8000, cwd: PROJ_ROOT, env: runEnv });
+      } catch (_) {}
+      resolve({ success: true, message: 'Bot finalizado com sucesso!' });
+    } catch (err) {
+      resolve({ success: false, message: 'Erro ao finalizar bot: ' + err.message });
+    }
+  });
 }
 
 process.on('uncaughtException', (err) => {
@@ -409,44 +483,10 @@ const server = http.createServer(async (req, res) => {
 
     // ── API: INICIAR BOT ───────────────────────────────────────
     if (pathname === '/api/start' && req.method === 'POST') {
-      const proc = getBotProcessInfo();
-      if (proc.running) {
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ success: false, message: `O bot já está em execução (PID: ${proc.pid})!` }));
-        return;
-      }
-
-      // Garante remoção de arquivo PID stale
-      if (fs.existsSync(PID_FILE)) {
-        try { fs.unlinkSync(PID_FILE); } catch (_) {}
-      }
-
       try {
-        const nodeExe = getNodeExecutable();
-        const indexScript = path.join(PROJ_ROOT, 'src/index.js');
-        const logOut = fs.openSync(LOG_FILE, 'a');
-        const errLogFile = path.join(PROJ_ROOT, 'logs/bot.err.log');
-        const logErr = fs.openSync(errLogFile, 'a');
-
-        const cleanEnv = { ...process.env };
-        delete cleanEnv.ELECTRON_RUN_AS_NODE;
-
-        const child = spawn(nodeExe, [indexScript], {
-          detached: true,
-          stdio: ['ignore', logOut, logErr],
-          windowsHide: true,
-          cwd: PROJ_ROOT,
-          env: cleanEnv,
-        });
-
-        child.unref();
-
-        if (child.pid) {
-          fs.writeFileSync(PID_FILE, String(child.pid), 'utf8');
-        }
-
+        const result = await startBotProcess();
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ success: true, message: `Bot iniciado com sucesso! (PID: ${child.pid})` }));
+        res.end(JSON.stringify(result));
       } catch (err) {
         console.error('[Dashboard /api/start Error]:', err);
         res.writeHead(500, { 'Content-Type': 'application/json' });
@@ -458,17 +498,12 @@ const server = http.createServer(async (req, res) => {
     // ── API: PARAR BOT ─────────────────────────────────────────
     if (pathname === '/api/stop' && req.method === 'POST') {
       try {
-        const nodeExe = getNodeExecutable();
-        const stopScript = path.join(PROJ_ROOT, 'src/stop.js');
-        execSync(`node "${stopScript}"`, { stdio: 'ignore', timeout: 8000, cwd: PROJ_ROOT });
-        execSync(`"${nodeExe}" "${stopScript}"`, { stdio: 'ignore', timeout: 8000, cwd: PROJ_ROOT });
-
+        const result = await stopBotProcess();
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ success: true, message: 'Bot finalizado com sucesso!' }));
+        res.end(JSON.stringify(result));
       } catch (err) {
         console.error('[Dashboard /api/stop Error]:', err);
         res.writeHead(500, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ success: false, message: err.message }));
         res.end(JSON.stringify({ success: false, message: 'Erro ao parar bot: ' + err.message }));
       }
       return;
@@ -763,5 +798,10 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log(`  Acesse no navegador: http://localhost:${PORT}`);
   console.log(`============================================================\n`);
 });
+
+server.getBotProcessInfo = getBotProcessInfo;
+server.startBotProcess = startBotProcess;
+server.stopBotProcess = stopBotProcess;
+server.getNodeExecutableAndEnv = getNodeExecutableAndEnv;
 
 module.exports = server;
