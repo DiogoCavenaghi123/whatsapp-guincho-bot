@@ -131,7 +131,8 @@ body {
 }
 
 .app-container {
-  max-width: 1380px;
+  max-width: 1680px;
+  width: 100%;
   margin: 0 auto;
   padding: 16px 24px 48px;
 }
@@ -606,8 +607,9 @@ body {
 .table-responsive {
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
-  overflow: hidden;
+  overflow-x: auto;
   background: var(--bg-card);
+  width: 100%;
 }
 
 .corporate-table {
@@ -646,7 +648,6 @@ body {
 
 .corporate-table td {
   padding: 12px 14px;
-  vertical-align: middle;
   vertical-align: top;
   color: var(--text-secondary);
 }

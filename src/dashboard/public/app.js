@@ -1573,7 +1573,7 @@ async function fetchTransparency(tabName) {
   } catch (err) {
     console.error('Erro em fetchTransparency:', err);
     if (transparencyTableBody) {
-      transparencyTableBody.innerHTML = `<tr><td colspan="8" class="table-state-cell text-danger">Falha na requisição de transparência: ${escapeHtml(err.message)}</td></tr>`;
+      transparencyTableBody.innerHTML = `<tr><td colspan="10" class="table-state-cell text-danger">Falha na requisição de transparência: ${escapeHtml(err.message)}</td></tr>`;
     }
   }
 }
@@ -1624,7 +1624,7 @@ function renderTransparency() {
   if (filtered.length === 0) {
     transparencyTableBody.innerHTML = `
       <tr>
-        <td colspan="8" class="table-state-cell">
+        <td colspan="10" class="table-state-cell">
           Nenhum agendamento encontrado para o filtro selecionado na aba <strong>${escapeHtml(state.transparencyTab)}</strong>.
         </td>
       </tr>
@@ -1643,20 +1643,10 @@ function renderTransparency() {
     const isGrouped = vCount > 1;
     const km = item.distanciaKm || 0;
 
-    // Badges de motivo
-    let tagHtml = '';
-    if (isGrouped) {
-      tagHtml = `<span class="calc-tag grouped">🤝 Compartilhada (${vCount} veículos)</span>`;
-    } else if (item.numCustoUnit > 0 || (typeof item.custoUnitario === 'number' && item.custoUnitario > 0)) {
-      tagHtml = `<span class="calc-tag single">🚛 Frete Exclusivo (1 veículo)</span>`;
-    } else {
-      tagHtml = `<span class="calc-tag manual">📋 Valor Manual / Pendente</span>`;
-    }
-
     const custoUnitStr = item.custoUnit || (typeof item.numCustoUnit === 'number' ? 'R$ ' + item.numCustoUnit.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : (item.custoUnitario ? 'R$ ' + item.custoUnitario.toLocaleString('pt-BR', { minimumFractionDigits: 2 }) : '--'));
     const custoViagemStr = item.custoViagem || (item.custoTotalViagem ? 'R$ ' + item.custoTotalViagem.toLocaleString('pt-BR', { minimumFractionDigits: 2 }) : '--');
 
-    const motivoValorBadge = item.motivoValorBadge || 'Tabela Base';
+    const motivoValorBadge = item.motivoValorBadge || 'Tabela Cegonha';
     const motivoValorText = item.motivoValor || item.motivoValorCurto || 'Valor registrado na planilha';
 
     const motivoCalcBadge = item.motivoCalculoBadge || (isGrouped ? `Rateio (${vCount} veículos)` : 'Frete Exclusivo (1 carro)');
@@ -1673,37 +1663,25 @@ function renderTransparency() {
         <td>
           <div class="route-cell">
             <span class="route-badge origem">📍 ${escapeHtml(origemName)}</span>
-            <span class="route-badge-city">${escapeHtml(origemCity ? 'Base: ' + origemCity : '')}</span>
-          <div class="trajeto-box">
-            <div class="trajeto-row">
-              <span class="route-badge origem">📍 ${escapeHtml(origemName)}</span>
-              <span class="route-badge-city">${escapeHtml(origemCity)}</span>
-              ${origemCity ? `<span class="route-badge-city">${escapeHtml(origemCity)}</span>` : ''}
-            </div>
-            <div class="trajeto-row">
-              <span class="route-badge destino">🏁 ${escapeHtml(destinoName)}</span>
-              <span class="route-badge-city">${escapeHtml(destinoCity)}</span>
-              ${destinoCity ? `<span class="route-badge-city">${escapeHtml(destinoCity)}</span>` : ''}
-            </div>
-            <div style="margin-top: 2px;">
-            <div style="margin-top: 4px;">
-              <span class="km-badge">🛣️ ${km} km percorrido</span>
-            </div>
+            ${origemCity ? `<span class="route-badge-city">Base: ${escapeHtml(origemCity)}</span>` : ''}
           </div>
         </td>
         <td>
           <div class="route-cell">
             <span class="route-badge destino">🏁 ${escapeHtml(destinoName)}</span>
-            <span class="route-badge-city">${escapeHtml(destinoCity ? 'Base: ' + destinoCity : '')}</span>
+            ${destinoCity ? `<span class="route-badge-city">Base: ${escapeHtml(destinoCity)}</span>` : ''}
+          </div>
+        </td>
+        <td style="text-align: center;">
+          <span class="km-badge">🛣️ ${km} km</span>
+        </td>
+        <td>
           <div class="reason-box">
             <span class="reason-badge value-badge">${escapeHtml(motivoValorBadge)}</span>
             <span class="reason-text">${escapeHtml(motivoValorText)}</span>
           </div>
         </td>
         <td>
-          <div class="calc-memory-box">
-            ${tagHtml}
-            <span class="calc-detail"><strong>${escapeHtml(item.motivoTitulo || '')}</strong>: ${escapeHtml(item.motivoDetalhe || '')}</span>
           <div class="reason-box">
             <span class="reason-badge ${isGrouped ? 'calc-badge' : 'single-badge'}">${escapeHtml(motivoCalcBadge)}</span>
             <span class="reason-text">${escapeHtml(motivoCalcText)}</span>
@@ -1711,10 +1689,10 @@ function renderTransparency() {
         </td>
         <td style="text-align: right;">
           <div class="unit-cost-val">${escapeHtml(custoUnitStr)}</div>
-          <div class="total-cost-sub">Total viagem: ${escapeHtml(custoViagemStr)}</div>
+          <div class="total-cost-sub">Total: ${escapeHtml(custoViagemStr)}</div>
         </td>
         <td style="text-align: center;">
-          <button class="btn-edit-route" data-row="${item.rowNumber}">
+          <button class="btn-edit-route" data-row="${item.rowNumber}" title="Alterar rota do transporte">
             ✏️ Alterar
           </button>
         </td>
