@@ -7,7 +7,20 @@ const fs = require('fs');
 const path = require('path');
 const url = require('url');
 const { execSync, spawn } = require('child_process');
-require('dotenv').config({ path: path.resolve(__dirname, '../../.env') });
+const envCandidates = [
+  path.resolve(__dirname, '../../.env'),
+  path.resolve(__dirname, '../.env'),
+  path.resolve(process.cwd(), '.env'),
+  path.resolve(process.cwd(), 'resources/app/.env'),
+  path.resolve(path.dirname(process.execPath), '.env'),
+  path.resolve(path.dirname(process.execPath), 'resources/app/.env'),
+];
+for (const cand of envCandidates) {
+  if (cand && fs.existsSync(cand)) {
+    require('dotenv').config({ path: cand });
+    break;
+  }
+}
 
 const history = require('../history');
 const sheets = require('../sheets');
@@ -21,6 +34,25 @@ const PID_FILE = path.join(PROJ_ROOT, '.bot.pid');
 const CMD_FILE = path.join(PROJ_ROOT, '.bot.cmd');
 const LOG_FILE = path.join(PROJ_ROOT, 'logs/bot.log');
 const PUBLIC_DIR = path.join(__dirname, 'public');
+
+function getCredentialsPath() {
+  const envPath = process.env.GOOGLE_CREDENTIALS_PATH || process.env.GOOGLE_CREDENTIALP_PATH;
+  if (envPath && fs.existsSync(envPath)) return envPath;
+
+  const candidates = [
+    path.join(__dirname, '../../credentials.json'),
+    path.join(__dirname, '../credentials.json'),
+    path.join(process.cwd(), 'credentials.json'),
+    path.join(process.cwd(), 'resources/app/credentials.json'),
+    path.join(path.dirname(process.execPath), 'credentials.json'),
+    path.join(path.dirname(process.execPath), 'resources/app/credentials.json'),
+  ];
+
+  for (const c of candidates) {
+    if (c && fs.existsSync(c)) return c;
+  }
+  return path.resolve(process.cwd(), 'credentials.json');
+}
 
 function getNodeExecutableAndEnv() {
   // 1. Se estiver rodando dentro do Electron (GuinchoBot.exe ou electron.exe):
@@ -286,7 +318,7 @@ const server = http.createServer(async (req, res) => {
     if (pathname === '/api/sync-sheets' && req.method === 'POST') {
       try {
         const sheetId = process.env.GOOGLE_SHEET_ID || process.env.GOOGLE_SPREADSHEET_ID;
-        const credsPath = process.env.GOOGLE_CREDENTIALS_PATH || './credentials.json';
+        const credsPath = getCredentialsPath();
         await sheets.init(credsPath);
         await sheets.ensureHeaders(sheetId);
         const cycleInfo = sheets.getTargetMonthInfo();
@@ -311,7 +343,7 @@ const server = http.createServer(async (req, res) => {
       req.on('end', async () => {
         try {
           const sheetId = process.env.GOOGLE_SHEET_ID || process.env.GOOGLE_SPREADSHEET_ID;
-          const credsPath = process.env.GOOGLE_CREDENTIALS_PATH || './credentials.json';
+          const credsPath = getCredentialsPath();
           await sheets.init(credsPath);
 
           let targetTab = 'SETEMBRO 2026';
@@ -344,7 +376,7 @@ const server = http.createServer(async (req, res) => {
     if (pathname === '/api/transparency' && req.method === 'GET') {
       try {
         const sheetId = process.env.GOOGLE_SHEET_ID || process.env.GOOGLE_SPREADSHEET_ID;
-        const credsPath = process.env.GOOGLE_CREDENTIALS_PATH || './credentials.json';
+        const credsPath = getCredentialsPath();
         await sheets.init(credsPath);
 
         let targetTab = parsedUrl.query.tab;
@@ -371,7 +403,7 @@ const server = http.createServer(async (req, res) => {
         try {
           const payload = JSON.parse(bodyData || '{}');
           const sheetId = process.env.GOOGLE_SHEET_ID || process.env.GOOGLE_SPREADSHEET_ID;
-          const credsPath = process.env.GOOGLE_CREDENTIALS_PATH || './credentials.json';
+          const credsPath = getCredentialsPath();
           await sheets.init(credsPath);
 
           const sheetName = payload.tab || 'SETEMBRO 2026';
@@ -412,7 +444,7 @@ const server = http.createServer(async (req, res) => {
     if (pathname === '/api/reports/data' && req.method === 'GET') {
       try {
         const sheetId = process.env.GOOGLE_SHEET_ID || process.env.GOOGLE_SPREADSHEET_ID;
-        const credsPath = process.env.GOOGLE_CREDENTIALS_PATH || './credentials.json';
+        const credsPath = getCredentialsPath();
         await sheets.init(credsPath);
 
         const type = parsedUrl.query.type || 'month';
@@ -433,7 +465,7 @@ const server = http.createServer(async (req, res) => {
     if (pathname === '/api/reports/export' && req.method === 'GET') {
       try {
         const sheetId = process.env.GOOGLE_SHEET_ID || process.env.GOOGLE_SPREADSHEET_ID;
-        const credsPath = process.env.GOOGLE_CREDENTIALS_PATH || './credentials.json';
+        const credsPath = getCredentialsPath();
         await sheets.init(credsPath);
 
         const type = parsedUrl.query.type || 'month';
@@ -462,7 +494,7 @@ const server = http.createServer(async (req, res) => {
     if (pathname === '/api/reports/print' && req.method === 'GET') {
       try {
         const sheetId = process.env.GOOGLE_SHEET_ID || process.env.GOOGLE_SPREADSHEET_ID;
-        const credsPath = process.env.GOOGLE_CREDENTIALS_PATH || './credentials.json';
+        const credsPath = getCredentialsPath();
         await sheets.init(credsPath);
 
         const type = parsedUrl.query.type || 'month';
@@ -611,7 +643,7 @@ const server = http.createServer(async (req, res) => {
           }
 
           const spreadsheetId = process.env.GOOGLE_SHEET_ID || process.env.GOOGLE_SPREADSHEET_ID;
-          const credsPath = process.env.GOOGLE_CREDENTIALS_PATH || './credentials.json';
+          const credsPath = getCredentialsPath();
           await sheets.init(credsPath);
 
           const finalData = payload.data || new Date().toLocaleDateString('pt-BR');

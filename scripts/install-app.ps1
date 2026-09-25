@@ -55,6 +55,21 @@ robocopy "$SourceDir" "$InstallDir" /E /R:1 /W:1 /NFL /NDL /NJH /NJS | Out-Null
 if ($LASTEXITCODE -ge 8) {
     Copy-Item -Path "$SourceDir\*" -Destination $InstallDir -Recurse -Force
 }
+
+# Garante arquivos essenciais de configuracao e credenciais
+if (Test-Path "$ProjectRoot\credentials.json") {
+    Copy-Item -Path "$ProjectRoot\credentials.json" -Destination "$InstallDir\credentials.json" -Force -ErrorAction SilentlyContinue
+    Copy-Item -Path "$ProjectRoot\credentials.json" -Destination "$InstallDir\resources\app\credentials.json" -Force -ErrorAction SilentlyContinue
+}
+if (Test-Path "$ProjectRoot\.env") {
+    Copy-Item -Path "$ProjectRoot\.env" -Destination "$InstallDir\.env" -Force -ErrorAction SilentlyContinue
+    Copy-Item -Path "$ProjectRoot\.env" -Destination "$InstallDir\resources\app\.env" -Force -ErrorAction SilentlyContinue
+}
+if (Test-Path "$ProjectRoot\.wwebjs_auth") {
+    if (-not (Test-Path "$InstallDir\.wwebjs_auth")) {
+        robocopy "$ProjectRoot\.wwebjs_auth" "$InstallDir\.wwebjs_auth" /E /R:1 /W:1 /NFL /NDL /NJH /NJS | Out-Null
+    }
+}
 Write-Host "[OK] Arquivos instalados com sucesso!" -ForegroundColor Green
 
 # 3. Cria atalho na Area de Trabalho (Desktop)

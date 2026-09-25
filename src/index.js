@@ -2,10 +2,25 @@
 //  Index — Entry point do bot
 // =============================================================
 
-require('dotenv').config();
-
 const fs = require('fs');
 const path = require('path');
+
+// Carrega .env de múltiplos locais candidatos para suportar standalone e atalhos
+const envCandidates = [
+  path.resolve(__dirname, '../.env'),
+  path.resolve(__dirname, '../../.env'),
+  path.resolve(process.cwd(), '.env'),
+  path.resolve(process.cwd(), 'resources/app/.env'),
+  path.resolve(path.dirname(process.execPath), '.env'),
+  path.resolve(path.dirname(process.execPath), 'resources/app/.env'),
+];
+for (const cand of envCandidates) {
+  if (cand && fs.existsSync(cand)) {
+    require('dotenv').config({ path: cand });
+    break;
+  }
+}
+
 const { execSync } = require('child_process');
 const logger = require('./logger');
 const sheets = require('./sheets');
@@ -73,7 +88,26 @@ async function main() {
   const groupId = process.env.WHATSAPP_GROUP_ID;
   const spreadsheetId = process.env.GOOGLE_SHEET_ID;
   const sheetName = process.env.GOOGLE_SHEET_TAB || 'Agendamentos';
-  const credentialsPath = process.env.GOOGLE_CREDENTIALP_PATH || process.env.GOOGLE_CREDENTIALS_PATH || './credentials.json';
+  function getCredentialsPath() {
+    const envPath = process.env.GOOGLE_CREDENTIALP_PATH || process.env.GOOGLE_CREDENTIALS_PATH;
+    if (envPath && fs.existsSync(envPath)) return envPath;
+
+    const candidates = [
+      path.join(__dirname, '../credentials.json'),
+      path.join(__dirname, '../../credentials.json'),
+      path.join(process.cwd(), 'credentials.json'),
+      path.join(process.cwd(), 'resources/app/credentials.json'),
+      path.join(path.dirname(process.execPath), 'credentials.json'),
+      path.join(path.dirname(process.execPath), 'resources/app/credentials.json'),
+    ];
+
+    for (const c of candidates) {
+      if (c && fs.existsSync(c)) return c;
+    }
+    return path.resolve(process.cwd(), 'credentials.json');
+  }
+
+  const credentialsPath = getCredentialsPath();
 
   if (!groupId) {
     logger.error('WHATSAPP_GROUP_ID não definido no .env');

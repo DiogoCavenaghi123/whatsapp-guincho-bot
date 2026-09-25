@@ -36,12 +36,27 @@ function getRecentContext() {
   return recentMessagesBuffer.join('\n');
 }
 
+function getAuthDir() {
+  const candidates = [
+    path.resolve(__dirname, '../.wwebjs_auth'),
+    path.resolve(__dirname, '../../.wwebjs_auth'),
+    path.resolve(process.cwd(), '.wwebjs_auth'),
+    path.resolve(process.cwd(), 'resources/app/.wwebjs_auth'),
+    path.resolve(path.dirname(process.execPath), '.wwebjs_auth'),
+  ];
+  for (const c of candidates) {
+    if (fs.existsSync(c)) return c;
+  }
+  return path.resolve(process.cwd(), '.wwebjs_auth');
+}
+
 /**
  * Limpa processos órfãos do Chromium e remove arquivos de lock remanescentes
  * de sessões anteriores que possam ter sido encerradas incorretamente.
  */
-function cleanupStaleBrowserSession() {
-  const sessionDir = path.resolve(__dirname, '../.wwebjs_auth/session');
+function cleanupStaleBrowserSession(customAuthDir) {
+  const baseAuth = customAuthDir || getAuthDir();
+  const sessionDir = path.join(baseAuth, 'session');
 
   // 1. Mata processos chrome órfãos usando o diretório de autenticação do bot (no Windows)
   if (process.platform === 'win32') {
@@ -78,20 +93,18 @@ function cleanupStaleBrowserSession() {
  *
  * @param {object} config
  * @param {string} config.groupId      — ID do grupo para monitorar
- * @param {string} config.groupId       — ID do grupo para monitorar
  * @param {string} config.spreadsheetId — ID da planilha Google Sheets
- * @param {string} config.sheetName     — nome da aba na planilha
  * @param {string} [config.sheetName]   — nome da aba na planilha
  * @returns {Client}
  */
 function createClient(config) {
   activeConfig = config;
 
-  // Garante limpeza preventiva antes de instanciar o browser
-  cleanupStaleBrowserSession();
+  const authDir = getAuthDir();
+  cleanupStaleBrowserSession(authDir);
 
   const client = new Client({
-    authStrategy: new LocalAuth(),
+    authStrategy: new LocalAuth({ dataPath: authDir }),
     puppeteer: {
       headless: true,
       args: [

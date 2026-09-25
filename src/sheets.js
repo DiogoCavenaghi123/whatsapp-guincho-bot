@@ -2,6 +2,8 @@
 //  Sheets — Integração com Google Sheets API
 // =============================================================
 
+const fs = require('fs');
+const path = require('path');
 const { google } = require('googleapis');
 const logger = require('./logger');
 const dealerships = require('./dealerships');
@@ -62,8 +64,27 @@ async function retryWithBackoff(fn, retries = 4, delayMs = 2500) {
  */
 async function init(credentialsPath) {
   try {
+    let resolvedPath = credentialsPath;
+    if (!resolvedPath || !fs.existsSync(resolvedPath)) {
+      const candidates = [
+        credentialsPath,
+        path.join(__dirname, '../credentials.json'),
+        path.join(__dirname, '../../credentials.json'),
+        path.join(process.cwd(), 'credentials.json'),
+        path.join(process.cwd(), 'resources/app/credentials.json'),
+        path.join(path.dirname(process.execPath), 'credentials.json'),
+        path.join(path.dirname(process.execPath), 'resources/app/credentials.json'),
+      ];
+      for (const c of candidates) {
+        if (c && fs.existsSync(c)) {
+          resolvedPath = c;
+          break;
+        }
+      }
+    }
+
     authClient = new google.auth.GoogleAuth({
-      keyFile: credentialsPath,
+      keyFile: resolvedPath,
       scopes: ['https://www.googleapis.com/auth/spreadsheets'],
     });
 
@@ -395,6 +416,23 @@ function extractCity(str) {
 }
 
 /**
+ * Converte strings formatadas no padrão monetário brasileiro (ex: " R$ 1.081,56 ")
+ * em número de ponto flutuante válido (1081.56).
+ */
+function parseBrNumber(val) {
+  if (typeof val === 'number') return isNaN(val) ? 0 : val;
+  const s = String(val || '').replace(/[^\d,\.]/g, '');
+  if (!s) return 0;
+  if (s.includes('.') && s.includes(',')) {
+    return parseFloat(s.replace(/\./g, '').replace(',', '.')) || 0;
+  }
+  if (s.includes(',') && !s.includes('.')) {
+    return parseFloat(s.replace(',', '.')) || 0;
+  }
+  return parseFloat(s) || 0;
+}
+
+/**
  * Carrega a tabela de custos da primeira aba (CUSTO TRANSPORTE).
  */
 async function loadTransportCostTable(spreadsheetId, forceRefresh = false) {
@@ -430,14 +468,12 @@ async function loadTransportCostTable(spreadsheetId, forceRefresh = false) {
       const normCity = extractCity(destCityRaw);
 
       if (currentSection === 'PLATAFORMA') {
-        const costStr = (row[11] || '').replace(/[^\d,\.]/g, '').replace(',', '.');
-        const costVal = parseFloat(costStr) || 0;
+        const costVal = parseBrNumber(row[11]);
         if (costVal > 0) {
           plataformaCosts.set(normCity, costVal);
         }
       } else if (currentSection === 'CEGONHA') {
-        const costStr = (row[11] || '').replace(/[^\d,\.]/g, '').replace(',', '.');
-        const costVal = parseFloat(costStr) || 0;
+        const costVal = parseBrNumber(row[11]);
         if (costVal > 0) {
           cegonhaCosts.set(normCity, costVal);
         }

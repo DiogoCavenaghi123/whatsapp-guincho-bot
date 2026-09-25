@@ -63,14 +63,27 @@ const destSrc = path.join(appDir, 'src');
 fs.cpSync(path.join(rootDir, 'src'), destSrc, { recursive: true });
 console.log('✓ Código-fonte copiado com sucesso.');
 
-// 5. Copia .env e credentials.json se existirem
+// 5. Copia .env e credentials.json (para resources/app e tambem na raiz do app)
 if (fs.existsSync(path.join(rootDir, '.env'))) {
   fs.copyFileSync(path.join(rootDir, '.env'), path.join(appDir, '.env'));
+  fs.copyFileSync(path.join(rootDir, '.env'), path.join(destDir, '.env'));
   console.log('✓ Arquivo .env copiado.');
 }
 if (fs.existsSync(path.join(rootDir, 'credentials.json'))) {
   fs.copyFileSync(path.join(rootDir, 'credentials.json'), path.join(appDir, 'credentials.json'));
+  fs.copyFileSync(path.join(rootDir, 'credentials.json'), path.join(destDir, 'credentials.json'));
   console.log('✓ Arquivo credentials.json copiado.');
+}
+const authSrc = path.join(rootDir, '.wwebjs_auth');
+const authDst = path.join(destDir, '.wwebjs_auth');
+if (fs.existsSync(authSrc) && !fs.existsSync(authDst)) {
+  console.log('Copiando sessão autenticada do WhatsApp (.wwebjs_auth)...');
+  try {
+    fs.cpSync(authSrc, authDst, { recursive: true });
+    console.log('✓ Sessão autenticada do WhatsApp copiada.');
+  } catch (e) {
+    console.warn('Aviso ao copiar sessão do WhatsApp:', e.message);
+  }
 }
 
 // 6. Garante diretório de logs
