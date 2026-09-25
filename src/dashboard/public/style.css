@@ -2517,7 +2517,9 @@ body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 60%;
+  flex: 1;
+  min-width: 0;
+  margin-right: 8px;
 }
 
 .breakdown-item-stats {
@@ -2526,6 +2528,7 @@ body {
   gap: 8px;
   font-family: var(--font-mono);
   font-size: 0.6875rem;
+  flex-shrink: 0;
 }
 
 .report-mini-table {

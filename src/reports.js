@@ -156,32 +156,46 @@ async function getReportData(spreadsheetId, options = {}) {
       }
 
       // Agrupamento por Departamento
-      const deptoKey = depto.toUpperCase();
+      const deptoKey = (depto || 'GERAL').toUpperCase();
       if (!deptoMap.has(deptoKey)) {
-        deptoMap.set(deptoKey, { depto: deptoKey, count: 0, costSum: 0 });
+        deptoMap.set(deptoKey, { depto: deptoKey, name: deptoKey, count: 0, costSum: 0 });
       }
       const dEntry = deptoMap.get(deptoKey);
       dEntry.count++;
       dEntry.costSum += numCustoUnit;
 
       // Agrupamento por Rota
-      const oCity = sheets.extractCity(coleta);
-      const dCity = sheets.extractCity(entrega);
-      let targetCity = (oCity === 'MOGI MIRIM') ? dCity : (dCity === 'MOGI MIRIM' ? oCity : dCity);
-      if (!targetCity) targetCity = dCity || oCity || 'OUTRAS';
-      const routeKey = targetCity;
-
-      if (!routeMap.has(routeKey)) {
-        routeMap.set(routeKey, { rota: routeKey, count: 0, costSum: 0 });
+      const oCity = sheets.extractCity(coleta) || (coleta || 'MOGI MIRIM').toUpperCase();
+      const dCity = sheets.extractCity(entrega) || (entrega || 'DESTINO').toUpperCase();
+      let routeLabel;
+      if (oCity === dCity) {
+        routeLabel = `INTERNO ${oCity}`;
+      } else if (oCity === 'MOGI MIRIM' || dCity === 'MOGI MIRIM') {
+        const other = oCity === 'MOGI MIRIM' ? dCity : oCity;
+        routeLabel = `MOGI MIRIM ⇄ ${other}`;
+      } else {
+        routeLabel = `${oCity} ⇄ ${dCity}`;
       }
-      const rEntry = routeMap.get(routeKey);
+
+      if (!routeMap.has(routeLabel)) {
+        routeMap.set(routeLabel, {
+          rota: routeLabel,
+          origem: oCity,
+          destino: dCity,
+          count: 0,
+          costSum: 0,
+        });
+      }
+      const rEntry = routeMap.get(routeLabel);
       rEntry.count++;
       rEntry.costSum += numCustoUnit;
     }
 
     monthlyBreakdownMap.set(tabName, {
       tabName,
+      name: tabName,
       carsCount: tabCarsCount,
+      totalVeiculos: tabCarsCount,
       costSum: tabCostSum,
       costFormatted: formatBRL(tabCostSum),
       avgPerCar: tabCarsCount > 0 ? formatBRL(tabCostSum / tabCarsCount) : 'R$ 0,00',
@@ -200,6 +214,8 @@ async function getReportData(spreadsheetId, options = {}) {
     .sort((a, b) => b.costSum - a.costSum)
     .map(d => ({
       ...d,
+      depto: d.depto,
+      name: d.depto,
       costFormatted: formatBRL(d.costSum),
       percentual: totalCostSum > 0 ? Math.round((d.costSum / totalCostSum) * 100) : 0,
     }));
@@ -208,6 +224,9 @@ async function getReportData(spreadsheetId, options = {}) {
     .sort((a, b) => b.count - a.count)
     .map(r => ({
       ...r,
+      rota: r.rota,
+      origem: r.origem,
+      destino: r.destino,
       costFormatted: formatBRL(r.costSum),
       percentual: totalVeiculos > 0 ? Math.round((r.count / totalVeiculos) * 100) : 0,
     }));

@@ -2058,15 +2058,18 @@ async function loadReportPreview() {
       if (topDeptos.length === 0) {
         reportDeptosList.innerHTML = '<span class="text-muted" style="font-size:0.75rem;">Nenhum frete faturado</span>';
       } else {
-        reportDeptosList.innerHTML = topDeptos.map(d => `
+        reportDeptosList.innerHTML = topDeptos.map(d => {
+          const deptoName = d.depto || d.name || 'GERAL';
+          return `
           <div class="breakdown-item">
-            <span class="breakdown-item-name" title="${escapeHtml(d.name)}">${escapeHtml(d.name)}</span>
+            <span class="breakdown-item-name" title="${escapeHtml(deptoName)}">${escapeHtml(deptoName)}</span>
             <div class="breakdown-item-stats">
               <span>${d.count} un (${d.percentual}%)</span>
               <strong class="text-primary">${escapeHtml(d.costFormatted)}</strong>
             </div>
           </div>
-        `).join('');
+        `;
+        }).join('');
       }
     }
 
@@ -2076,15 +2079,18 @@ async function loadReportPreview() {
       if (topRotas.length === 0) {
         reportRotasList.innerHTML = '<span class="text-muted" style="font-size:0.75rem;">Nenhuma rota registrada</span>';
       } else {
-        reportRotasList.innerHTML = topRotas.map(r => `
+        reportRotasList.innerHTML = topRotas.map(r => {
+          const rotaLabel = r.rota || (r.origem && r.destino ? `${r.origem} ⇄ ${r.destino}` : (r.origem || r.destino || 'ROTA GERAL'));
+          return `
           <div class="breakdown-item">
-            <span class="breakdown-item-name" title="${escapeHtml(r.origem)} ➔ ${escapeHtml(r.destino)}">${escapeHtml(r.origem)} ➔ ${escapeHtml(r.destino)}</span>
+            <span class="breakdown-item-name" title="${escapeHtml(rotaLabel)}">${escapeHtml(rotaLabel)}</span>
             <div class="breakdown-item-stats">
               <span>${r.count} un</span>
               <strong>${escapeHtml(r.costFormatted)}</strong>
             </div>
           </div>
-        `).join('');
+        `;
+        }).join('');
       }
     }
 
@@ -2094,11 +2100,10 @@ async function loadReportPreview() {
       if (reportAnnualMonthsBody) {
         reportAnnualMonthsBody.innerHTML = data.meses.map(m => `
           <tr>
-            <td style="font-weight: 600;">${escapeHtml(m.name)}</td>
-            <td style="text-align: right;">${m.totalVeiculos}</td>
+            <td style="font-weight: 600;">${escapeHtml(m.tabName || m.name)}</td>
+            <td style="text-align: right;">${m.carsCount || m.totalVeiculos || 0}</td>
             <td style="text-align: right; font-weight: 700;" class="text-primary">${escapeHtml(m.costFormatted)}</td>
-            <td style="text-align: right;" class="text-success">${escapeHtml(m.economiaFormatted)}</td>
-            <td style="text-align: right;">${m.taxaCompartilhamento}%</td>
+            <td style="text-align: right;">${escapeHtml(m.avgPerCar || 'R$ 0,00')}</td>
           </tr>
         `).join('');
       }
