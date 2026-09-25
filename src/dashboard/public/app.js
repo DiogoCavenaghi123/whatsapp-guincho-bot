@@ -532,8 +532,6 @@ function renderHistoryTable() {
 
   historyTableBody.innerHTML = items
     .map((item, idx) => {
-      let badgeHtml = '<span class="badge badge-muted">Descartado</span>';
-      if (item.status === 'AGENDAMENTO') {
       let badgeHtml = `<span class="badge badge-muted">${escapeHtml(item.status || 'Descartado')}</span>`;
       if (item.status === 'AGENDAMENTO' || item.status === 'NOVO_AGENDAMENTO') {
         badgeHtml = '<span class="badge badge-success">Agendamento</span>';

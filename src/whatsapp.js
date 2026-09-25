@@ -429,18 +429,15 @@ async function handleMessage(message, config, isHistorical = false) {
     message.to === config.groupId ||
     remote === config.groupId;
 
-  if (!isFromTargetGroup) return;
   if (!isFromTargetGroup) return { isAgendamento: false };
   const chatId = message.from === config.groupId ? message.from : message.to;
 
   // Ignora mensagens sem texto (imagens, áudios, stickers, etc.)
   const body = message.body;
-  if (!body || body.trim().length === 0) return;
   if (!body || body.trim().length === 0) return { isAgendamento: false };
 
   // Ignora respostas geradas pelo próprio bot para evitar loop infinito
   if (body.includes('AGENDAMENTO REGISTRADO') || body.includes('AGENDAMENTO DUPLICADO')) {
-    return;
     return { isAgendamento: false };
   }
 
@@ -458,7 +455,6 @@ async function handleMessage(message, config, isHistorical = false) {
 
   logger.info(`[DEBUG] Mensagem recebida no grupo Agenda guincho: "${body.substring(0, 50)}..."`);
 
-  // 1. Tenta extrair com o parser rápido (padrão de texto com rótulos)
   // 1. Contexto recente para IA
   const recentContext = getRecentContext();
   pushRecentMessage(sender, body);
@@ -470,7 +466,6 @@ async function handleMessage(message, config, isHistorical = false) {
       timestamp: msgDate,
       author: sender,
       body,
-      status: 'DESCARTADO',
       status: 'AVISO_OPERACIONAL',
       reason: 'Aviso operacional ou confirmação simples (sem pedido de transporte)',
     });
@@ -481,15 +476,10 @@ async function handleMessage(message, config, isHistorical = false) {
   // 2. Parser Regex Rápido
   let agendamento = parseAgendamento(body);
 
-  // 2. Se o formato for livre ou informal, aciona o Gemini AI
-  // 3. Fallback inteligente com Google Gemini AI
   // 3. Fallback com Classificador Gemini AI (com contexto e data)
   let classification = null;
   if (!agendamento) {
-    logger.info('Tentando interpretar mensagem com Gemini AI...');
     logger.info('Interpretando mensagem com Gemini AI...');
-    agendamento = await gemini.parseWithGemini(body);
-    if (agendamento) {
     const dataAtual = msgDate ? new Date(msgDate).toLocaleDateString('pt-BR') : new Date().toLocaleDateString('pt-BR');
     classification = await gemini.classifyWithGemini(body, {
       contextoMensagens: recentContext,
@@ -504,9 +494,6 @@ async function handleMessage(message, config, isHistorical = false) {
 
   // Se não foi identificado como agendamento
   if (!agendamento) {
-<<<<<<< HEAD
-    return;
-=======
     // Caso especial: Solicitação de viagem operacional para aprovação humana no painel
     if (classification && (classification.tipoMensagem === 'SOLICITACAO_VIAGEM' || classification.necessitaAprovacao === true)) {
       logger.info(`📋 Viagem operacional identificada ("${body.substring(0, 50)}..."). Enviada para Fila de Aprovação no Painel de Controle!`);
@@ -522,7 +509,6 @@ async function handleMessage(message, config, isHistorical = false) {
       return { isAgendamento: false, requiresApproval: true };
     }
 
->>>>>>> e16184e (feat: adiciona aba de transparencia, padronizacao de concessionarias, controle de respostas e app desktop)
     const statusType = classification ? (classification.tipoMensagem || 'DESCARTADO') : 'DESCARTADO';
     const reasonText = classification
       ? (classification.motivo || classification.motivoRevisao || classification.tipoMensagem)
@@ -539,8 +525,6 @@ async function handleMessage(message, config, isHistorical = false) {
       timestamp: msgDate,
       author: sender,
       body,
-      status: 'DESCARTADO',
-      reason: 'Conversa ou texto sem veículo/rota identificados',
       status: statusType,
       reason: reasonText,
       extractedData: classification || null,

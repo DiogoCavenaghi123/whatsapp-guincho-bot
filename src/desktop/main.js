@@ -46,11 +46,6 @@ const ICON_PATH = fs.existsSync(path.join(__dirname, '../dashboard/public/assets
   : path.join(__dirname, '../dashboard/public/assets/logo.png');
 
 function startInternalServer() {
-  try {
-    serverInstance = require('../dashboard/server');
-  } catch (err) {
-    log('[Electron] Erro ao carregar servidor interno: ' + (err.stack || err.message));
-  }
   const http = require('http');
   const req = http.get(`http://localhost:${PORT}/api/status`, (res) => {
     log('[Electron] Servidor HTTP já está ativo na porta ' + PORT);
@@ -147,30 +142,19 @@ function createWindow() {
   });
 }
 
-const TRAY_ICON_PATH = path.join(__dirname, '../dashboard/public/assets/logo.png');
+const TRAY_ICON_PATH = fs.existsSync(path.join(__dirname, '../dashboard/public/assets/logo.png'))
+  ? path.join(__dirname, '../dashboard/public/assets/logo.png')
+  : ICON_PATH;
 
 function createTray() {
   try {
     const icon = fs.existsSync(TRAY_ICON_PATH)
       ? nativeImage.createFromPath(TRAY_ICON_PATH).resize({ width: 16, height: 16 })
-    const icon = fs.existsSync(ICON_PATH)
-      ? nativeImage.createFromPath(ICON_PATH)
-      : nativeImage.createEmpty();
       : (fs.existsSync(ICON_PATH) ? nativeImage.createFromPath(ICON_PATH) : nativeImage.createEmpty());
 
     tray = new Tray(icon);
     tray.setToolTip('Grupo Hazul — Bot WhatsApp Guincho');
 
-  const contextMenu = Menu.buildFromTemplate([
-    {
-      label: 'Abrir Painel Principal',
-      click: () => {
-        if (mainWindow) {
-          mainWindow.show();
-          mainWindow.focus();
-        } else {
-          createWindow();
-        }
     const contextMenu = Menu.buildFromTemplate([
       {
         label: 'Abrir Painel Principal',
@@ -183,8 +167,6 @@ function createTray() {
           }
         },
       },
-    },
-    { type: 'separator' },
       { type: 'separator' },
       {
         label: 'Recarregar Painel (F5)',
@@ -197,11 +179,6 @@ function createTray() {
         },
       },
       { type: 'separator' },
-    {
-      label: 'Abrir no Navegador Web',
-      click: () => {
-        const { shell } = require('electron');
-        shell.openExternal(`http://localhost:${PORT}`);
       {
         label: 'Abrir no Navegador Web',
         click: () => {
@@ -209,13 +186,6 @@ function createTray() {
           shell.openExternal(`http://localhost:${PORT}`);
         },
       },
-    },
-    { type: 'separator' },
-    {
-      label: 'Fechar Aplicativo Completamente',
-      click: () => {
-        isQuitting = true;
-        app.quit();
       { type: 'separator' },
       {
         label: 'Fechar Aplicativo Completamente',
@@ -224,25 +194,22 @@ function createTray() {
           app.quit();
         },
       },
-    },
-  ]);
     ]);
 
-  tray.setContextMenu(contextMenu);
     tray.setContextMenu(contextMenu);
 
-  tray.on('double-click', () => {
-    if (mainWindow) {
-      if (mainWindow.isVisible()) {
-        mainWindow.focus();
+    tray.on('double-click', () => {
+      if (mainWindow) {
+        if (mainWindow.isVisible()) {
+          mainWindow.focus();
+        } else {
+          mainWindow.show();
+          mainWindow.focus();
+        }
       } else {
-        mainWindow.show();
-        mainWindow.focus();
+        createWindow();
       }
-    } else {
-      createWindow();
-    }
-  });
+    });
 
     tray.on('click', () => {
       if (mainWindow) {
@@ -257,7 +224,6 @@ function createTray() {
   }
 }
 
-// Segunda instância foca na janela já existente
 // Segunda instância foca na janela já existente e recarrega os dados
 app.on('second-instance', () => {
   if (mainWindow) {
