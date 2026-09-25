@@ -53,6 +53,7 @@ function getBotProcessInfo() {
   try {
     process.kill(pid, 0);
   } catch (e) {
+    // Processo definitivamente não existe
     // Processo definitivamente não existe - limpa o arquivo stale
     try { fs.unlinkSync(PID_FILE); } catch (_) {}
     return { running: false, pid: null, startedAt: null };
@@ -71,6 +72,9 @@ function getBotProcessInfo() {
       try { fs.unlinkSync(PID_FILE); } catch (_) {}
       return { running: false, pid: null, startedAt: null };
     }
+  } catch (e) {}
+
+  return { running: false, pid: null, startedAt: null };
   } catch (e) {
     return { running: true, pid };
   }
@@ -136,6 +140,7 @@ const server = http.createServer(async (req, res) => {
           stats,
           groupRepliesEnabled: settings.isGroupRepliesEnabled(),
           activeTab: cycleInfo.expectedTabName,
+          cycleRange: `24/${String(cycleInfo.monthIndex === 0 ? 12 : cycleInfo.monthIndex).padStart(2, '0')} até 23/${String(cycleInfo.monthIndex + 1).padStart(2, '0')}`,
           sheetName: 'Guincho',
           lastSyncTime,
           cycleStart: cycleStartStr,
@@ -334,6 +339,7 @@ const server = http.createServer(async (req, res) => {
       const proc = getBotProcessInfo();
       if (proc.running) {
         res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: false, message: 'O bot já está em execução!' }));
         res.end(JSON.stringify({ success: false, message: `O bot já está em execução (PID: ${proc.pid})!` }));
         return;
       }
@@ -344,6 +350,8 @@ const server = http.createServer(async (req, res) => {
       }
 
       try {
+        const startScript = path.join(PROJ_ROOT, 'src/start-bg.js');
+        const child = spawn(process.execPath, [startScript], {
         const nodeExe = getNodeExecutable();
         const indexScript = path.join(PROJ_ROOT, 'src/index.js');
         const logOut = fs.openSync(LOG_FILE, 'a');
@@ -355,6 +363,7 @@ const server = http.createServer(async (req, res) => {
 
         const child = spawn(nodeExe, [indexScript], {
           detached: true,
+          stdio: 'ignore',
           stdio: ['ignore', logOut, logErr],
           windowsHide: true,
           cwd: PROJ_ROOT,
@@ -368,10 +377,12 @@ const server = http.createServer(async (req, res) => {
         }
 
         res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: true, message: 'Bot iniciado em segundo plano com sucesso!' }));
         res.end(JSON.stringify({ success: true, message: `Bot iniciado com sucesso! (PID: ${child.pid})` }));
       } catch (err) {
         console.error('[Dashboard /api/start Error]:', err);
         res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: false, message: err.message }));
         res.end(JSON.stringify({ success: false, message: 'Erro ao iniciar bot: ' + err.message }));
       }
       return;
@@ -382,6 +393,7 @@ const server = http.createServer(async (req, res) => {
       try {
         const nodeExe = getNodeExecutable();
         const stopScript = path.join(PROJ_ROOT, 'src/stop.js');
+        execSync(`node "${stopScript}"`, { stdio: 'ignore', timeout: 8000, cwd: PROJ_ROOT });
         execSync(`"${nodeExe}" "${stopScript}"`, { stdio: 'ignore', timeout: 8000, cwd: PROJ_ROOT });
 
         res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -389,6 +401,7 @@ const server = http.createServer(async (req, res) => {
       } catch (err) {
         console.error('[Dashboard /api/stop Error]:', err);
         res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: false, message: err.message }));
         res.end(JSON.stringify({ success: false, message: 'Erro ao parar bot: ' + err.message }));
       }
       return;
@@ -641,16 +654,24 @@ const server = http.createServer(async (req, res) => {
         '.png': 'image/png',
         '.svg': 'image/svg+xml',
         '.ico': 'image/x-icon',
+      };
+<<<<<<< HEAD
+      res.writeHead(200, { 'Content-Type': mimeTypes[ext] || 'application/octet-stream' });
+=======
+>>>>>>> c8e4980 (fix(dashboard): adiciona headers no-cache e suporte a requisicoes HEAD para prevencao de travamento)
       res.writeHead(200, {
         'Content-Type': mimeTypes[ext] || 'application/octet-stream',
         'Cache-Control': 'no-cache, no-store, must-revalidate',
         Pragma: 'no-cache',
         Expires: '0',
       });
+<<<<<<< HEAD
+=======
       if (req.method === 'HEAD') {
         res.end();
         return;
       }
+>>>>>>> c8e4980 (fix(dashboard): adiciona headers no-cache e suporte a requisicoes HEAD para prevencao de travamento)
       fs.createReadStream(filePath).pipe(res);
       return;
     }

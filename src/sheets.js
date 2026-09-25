@@ -345,6 +345,16 @@ const DEFAULT_PLATAFORMA_COSTS = new Map([
   ['ITAPIRA', 265.95],
   ['ANDRADAS', 1100.00],
 ]);
+
+const DEFAULT_CEGONHA_COSTS = new Map([
+  ['SJBV', 1013.00],
+  ['CAMPINAS', 1009.95],
+  ['VALINHOS', 1109.95],
+  ['VINHEDO', 1154.49],
+  ['ITAPIRA', 311.34],
+  ['ANDRADAS', 1100.00],
+  ['PARNAIBA', 2050.00],
+]);
 let transportCostCache = null;
 
 /**
@@ -370,7 +380,7 @@ function extractCity(str) {
   if (s.includes('MOGI') || s.includes('MM') || s.includes('REPARACAO') || s.includes('DUETO') || s.includes('DIVEM') || s.includes('PEUGEOT') || s.includes('CITROEN') || s.includes('PERFEITO')) {
     return 'MOGI MIRIM';
   }
-  if (s.includes('CAMPINAS') || s.includes('CODIVE') || s.includes('HZ CAMPINAS') || s.includes('KODYVE')) {
+  if (s.includes('CAMPINAS') || s.includes('CODIVE') || s.includes('HZ CAMPINAS')) {
     return 'CAMPINAS';
   }
   if (s.includes('VALINHOS')) return 'VALINHOS';
@@ -426,12 +436,11 @@ async function loadTransportCostTable(spreadsheetId, forceRefresh = false) {
           plataformaCosts.set(normCity, costVal);
         }
       } else if (currentSection === 'CEGONHA') {
-        const qtyCosts = [];
-        for (let q = 1; q <= 8; q++) {
-          const raw = (row[10 + q] || '').replace(/[^\d,\.]/g, '').replace(',', '.');
-          qtyCosts[q] = parseFloat(raw) || 0;
+        const costStr = (row[11] || '').replace(/[^\d,\.]/g, '').replace(',', '.');
+        const costVal = parseFloat(costStr) || 0;
+        if (costVal > 0) {
+          cegonhaCosts.set(normCity, costVal);
         }
-        cegonhaCosts.set(normCity, qtyCosts);
       }
     }
 
@@ -442,6 +451,14 @@ async function loadTransportCostTable(spreadsheetId, forceRefresh = false) {
     if (!plataformaCosts.has('VINHEDO')) plataformaCosts.set('VINHEDO', 959.96);
     if (!plataformaCosts.has('ITAPIRA')) plataformaCosts.set('ITAPIRA', 265.95);
     if (!plataformaCosts.has('ANDRADAS')) plataformaCosts.set('ANDRADAS', 1100.00);
+
+    // Valores padrão oficiais da Cegonha (Grupo Hazul)
+    if (!cegonhaCosts.has('SJBV')) cegonhaCosts.set('SJBV', 1013.00);
+    if (!cegonhaCosts.has('CAMPINAS')) cegonhaCosts.set('CAMPINAS', 1009.95);
+    if (!cegonhaCosts.has('VALINHOS')) cegonhaCosts.set('VALINHOS', 1109.95);
+    if (!cegonhaCosts.has('VINHEDO')) cegonhaCosts.set('VINHEDO', 1154.49);
+    if (!cegonhaCosts.has('ITAPIRA')) cegonhaCosts.set('ITAPIRA', 311.34);
+    if (!cegonhaCosts.has('ANDRADAS')) cegonhaCosts.set('ANDRADAS', 1100.00);
 
     transportCostCache = { plataformaCosts, cegonhaCosts };
     return transportCostCache;
@@ -456,7 +473,15 @@ async function loadTransportCostTable(spreadsheetId, forceRefresh = false) {
         ['ITAPIRA', 265.95],
         ['ANDRADAS', 1100.00],
       ]),
-      cegonhaCosts: new Map(),
+      cegonhaCosts: new Map([
+        ['SJBV', 1013.00],
+        ['CAMPINAS', 1009.95],
+        ['VALINHOS', 1109.95],
+        ['VINHEDO', 1154.49],
+        ['ITAPIRA', 311.34],
+        ['ANDRADAS', 1100.00],
+        ['PARNAIBA', 2050.00],
+      ]),
     };
     return transportCostCache;
   }
@@ -470,7 +495,7 @@ function formatBRL(val) {
 /**
  * Resolve o custo total da viagem e o custo unitário por veículo conforme a tabela de preços.
  */
-function resolveTripCost(origem, destino, modalidade = 'PLATAFORMA', qtd = 1, costTable = null) {
+function resolveTripCost(origem, destino, modalidade = 'CEGONHA', qtd = 1, costTable = null) {
   const o = extractCity(origem);
   const d = extractCity(destino);
 
@@ -478,16 +503,30 @@ function resolveTripCost(origem, destino, modalidade = 'PLATAFORMA', qtd = 1, co
   if (!targetCity) targetCity = d || o || 'CAMPINAS';
 
   const costs = costTable || transportCostCache;
-  let totalTrip = 760.61; // Padrão Campinas
+  const isCegonha = !modalidade || modalidade.toUpperCase().includes('CEGONHA');
+  let totalTrip = isCegonha ? 1009.95 : 760.61; // Padrão Campinas
 
-  if (costs && costs.plataformaCosts && costs.plataformaCosts.has(targetCity)) {
-    totalTrip = costs.plataformaCosts.get(targetCity);
-  } else if (DEFAULT_PLATAFORMA_COSTS.has(targetCity)) {
-    totalTrip = DEFAULT_PLATAFORMA_COSTS.get(targetCity);
-  } else if (targetCity === 'ANDRADAS') {
-    totalTrip = 1100.00;
-  } else if (targetCity === 'ITAPIRA' && (o === 'CAMPINAS' || d === 'CAMPINAS')) {
-    totalTrip = 760.61;
+  if (isCegonha) {
+    if (costs && costs.cegonhaCosts && costs.cegonhaCosts.has(targetCity)) {
+      const c = costs.cegonhaCosts.get(targetCity);
+      totalTrip = typeof c === 'number' ? c : (c[1] || 1009.95);
+    } else if (DEFAULT_CEGONHA_COSTS.has(targetCity)) {
+      totalTrip = DEFAULT_CEGONHA_COSTS.get(targetCity);
+    } else if (targetCity === 'ANDRADAS') {
+      totalTrip = 1100.00;
+    } else if (targetCity === 'ITAPIRA' && (o === 'CAMPINAS' || d === 'CAMPINAS')) {
+      totalTrip = 1009.95;
+    }
+  } else {
+    if (costs && costs.plataformaCosts && costs.plataformaCosts.has(targetCity)) {
+      totalTrip = costs.plataformaCosts.get(targetCity);
+    } else if (DEFAULT_PLATAFORMA_COSTS.has(targetCity)) {
+      totalTrip = DEFAULT_PLATAFORMA_COSTS.get(targetCity);
+    } else if (targetCity === 'ANDRADAS') {
+      totalTrip = 1100.00;
+    } else if (targetCity === 'ITAPIRA' && (o === 'CAMPINAS' || d === 'CAMPINAS')) {
+      totalTrip = 760.61;
+    }
   }
 
   const effectiveQtd = Math.max(1, Number(qtd) || 1);
@@ -631,12 +670,11 @@ async function appendRow(spreadsheetId, rowData, msgDate = new Date()) {
     const totalQtd = related.length + 1;
 
     // 4. Calcula custo da viagem
-    const modalidade = rowData[6] || 'PLATAFORMA';
+    const modalidade = rowData[6] || 'CEGONHA';
+    rowData[6] = modalidade;
     const costInfo = resolveTripCost(rowData[4], rowData[5], modalidade, totalQtd, costTable);
 
     // 5. Preenche Colunas I a L da nova linha
-    rowData[8] = rowData[8] || costInfo.formattedTotal;
-    rowData[9] = rowData[9] || String(totalQtd);
     rowData[8] = (typeof rowData[8] === 'number') ? rowData[8] : costInfo.totalTripCost;
     rowData[9] = totalQtd;
     rowData[10] = `=I${targetRow}/J${targetRow}`;
@@ -664,16 +702,16 @@ async function appendRow(spreadsheetId, rowData, msgDate = new Date()) {
     }
     rows[targetRow - 1] = currentCachedRow;
 
-    // 8. Se há viagens irmãs relacionadas no mesmo dia, atualiza Col I, J, K nelas
+    // 8. Se há viagens irmãs relacionadas no mesmo dia, atualiza Col G a L nelas
     if (related.length > 0) {
       const siblingUpdates = [];
       for (const sib of related) {
         const sibRow = sib.rowNumber;
         siblingUpdates.push({
-          range: `'${sheetName}'!I${sibRow}:L${sibRow}`,
+          range: `'${sheetName}'!G${sibRow}:L${sibRow}`,
           values: [[
-            costInfo.formattedTotal,
-            String(totalQtd),
+            'CEGONHA',
+            sib.nf || '',
             costInfo.totalTripCost,
             totalQtd,
             `=I${sibRow}/J${sibRow}`,
@@ -681,8 +719,7 @@ async function appendRow(spreadsheetId, rowData, msgDate = new Date()) {
           ]],
         });
         if (rows[sib.rowIndex]) {
-          rows[sib.rowIndex][8] = costInfo.formattedTotal;
-          rows[sib.rowIndex][9] = String(totalQtd);
+          rows[sib.rowIndex][6] = 'CEGONHA';
           rows[sib.rowIndex][8] = costInfo.totalTripCost;
           rows[sib.rowIndex][9] = totalQtd;
           rows[sib.rowIndex][10] = `=I${sibRow}/J${sibRow}`;
@@ -901,7 +938,7 @@ async function recalculateMonthTransportCosts(spreadsheetId, sheetName) {
     const chassi = (r[3] || '').trim();
     const coleta = (r[4] || '').trim();
     const entrega = (r[5] || '').trim();
-    const veicTransp = (r[6] || '').trim() || 'PLATAFORMA';
+    const veicTransp = (r[6] || '').trim() || 'CEGONHA';
     const nf = (r[7] || '').trim();
     const custoViagem = (r[8] || '').trim();
     const veicPorViagem = (r[9] || '').trim();
@@ -960,7 +997,7 @@ async function recalculateMonthTransportCosts(spreadsheetId, sheetName) {
     for (const g of groups) {
       const qtd = g.length;
       const first = g[0];
-      const costInfo = resolveTripCost(first.coleta, first.entrega, first.veicTransp, qtd, costTable);
+      const costInfo = resolveTripCost(first.coleta, first.entrega, 'CEGONHA', qtd, costTable);
 
       for (const item of g) {
         const rowNum = item.rowNumber;
@@ -970,8 +1007,8 @@ async function recalculateMonthTransportCosts(spreadsheetId, sheetName) {
         const newFaturado = item.faturado || ' NÃO FATURADO';
 
         updateBatch.push({
-          range: `'${sheetName}'!I${rowNum}:L${rowNum}`,
-          values: [[newCusto, newQtd, newFormula, newFaturado]],
+          range: `'${sheetName}'!G${rowNum}:L${rowNum}`,
+          values: [['CEGONHA', item.nf || '', newCusto, newQtd, newFormula, newFaturado]],
         });
 
         details.push({
@@ -1033,7 +1070,7 @@ async function getMonthTransparencyData(spreadsheetId, sheetName) {
     const chassi = (r[3] || '').trim();
     const coleta = (r[4] || '').trim();
     const entrega = (r[5] || '').trim();
-    const veicTransp = (r[6] || '').trim() || 'PLATAFORMA';
+    const veicTransp = (r[6] || '').trim() || 'CEGONHA';
     const nf = (r[7] || '').trim();
     const custoViagem = (r[8] || '').trim();
     const veicPorViagem = parseInt(r[9]) || 1;
@@ -1061,25 +1098,43 @@ async function getMonthTransparencyData(spreadsheetId, sheetName) {
       sharedVehiclesCount++;
     }
 
-    let motivoTitulo = '';
-    let motivoDetalhe = '';
     const highway = distance.getHighwayDistance(coleta, entrega);
     const distanciaKm = highway.distanceKm;
     const distanciaTexto = highway.distanceText;
 
-    // 1. Motivo do Valor Inserido (Origem do Custo Total da Viagem / Prancha)
+    // 1. Motivo do Valor Inserido (Origem do Custo Total da Viagem / Cegonha)
     let motivoValor = '';
     let motivoValorCurto = '';
     let motivoValorBadge = '';
 
-    if (numCustoViagem === 900 || targetCity === 'SJBV') {
-      motivoValorBadge = 'Tabela SJBV (R$ 900)';
-      motivoValorCurto = `Tabela Hazul para São João da Boa Vista (${distanciaKm} km)`;
-      motivoValor = `Tabela oficial do Grupo Hazul para a rota Mogi ⟷ São João da Boa Vista (~${distanciaKm} km rodoviários). Custo base total da prancha: R$ 900,00.`;
-    } else if (numCustoViagem === 500 || ['CAMPINAS', 'VALINHOS', 'VINHEDO'].includes(targetCity)) {
-      motivoValorBadge = 'Tabela Campinas (R$ 500)';
-      motivoValorCurto = `Tabela Hazul para Região de Campinas (${distanciaKm} km)`;
-      motivoValor = `Tabela oficial do Grupo Hazul para rota Mogi ⟷ Região de Campinas / Valinhos / Vinhedo (~${distanciaKm} km). Custo base total da prancha: R$ 500,00.`;
+    if (numCustoViagem === 1013 || numCustoViagem === 1081.56 || targetCity === 'SJBV') {
+      motivoValorBadge = 'Tabela Cegonha SJBV (R$ 1.013)';
+      motivoValorCurto = `Tabela Cegonha Hazul para São João da Boa Vista (${distanciaKm} km)`;
+      motivoValor = `Tabela oficial de Cegonha do Grupo Hazul para a rota Mogi ⟷ São João da Boa Vista (~${distanciaKm} km rodoviários). Custo base da viagem na cegonha: R$ 1.013,00.`;
+    } else if (Math.abs(numCustoViagem - 1009.95) < 1 || targetCity === 'CAMPINAS') {
+      motivoValorBadge = 'Tabela Cegonha Campinas (R$ 1.009,95)';
+      motivoValorCurto = `Tabela Cegonha Hazul para Campinas (${distanciaKm} km)`;
+      motivoValor = `Tabela oficial de Cegonha do Grupo Hazul para rota Mogi ⟷ Campinas (~${distanciaKm} km). Custo base da viagem na cegonha: R$ 1.009,95.`;
+    } else if (Math.abs(numCustoViagem - 1109.95) < 1 || targetCity === 'VALINHOS') {
+      motivoValorBadge = 'Tabela Cegonha Valinhos (R$ 1.109,95)';
+      motivoValorCurto = `Tabela Cegonha Hazul para Valinhos (${distanciaKm} km)`;
+      motivoValor = `Tabela oficial de Cegonha do Grupo Hazul para rota Mogi ⟷ Valinhos (~${distanciaKm} km). Custo base da viagem na cegonha: R$ 1.109,95.`;
+    } else if (Math.abs(numCustoViagem - 1154.49) < 1 || targetCity === 'VINHEDO') {
+      motivoValorBadge = 'Tabela Cegonha Vinhedo (R$ 1.154,49)';
+      motivoValorCurto = `Tabela Cegonha Hazul para Vinhedo (${distanciaKm} km)`;
+      motivoValor = `Tabela oficial de Cegonha do Grupo Hazul para rota Mogi ⟷ Vinhedo (~${distanciaKm} km). Custo base da viagem na cegonha: R$ 1.154,49.`;
+    } else if (Math.abs(numCustoViagem - 1100) < 1 || targetCity === 'ANDRADAS') {
+      motivoValorBadge = 'Tabela Cegonha Andradas (R$ 1.100)';
+      motivoValorCurto = `Tabela Cegonha Hazul para Andradas (${distanciaKm} km)`;
+      motivoValor = `Tabela oficial de Cegonha do Grupo Hazul para rota Mogi ⟷ Andradas (~${distanciaKm} km). Custo base da viagem na cegonha: R$ 1.100,00.`;
+    } else if (Math.abs(numCustoViagem - 311.34) < 1 || targetCity === 'ITAPIRA') {
+      motivoValorBadge = 'Tabela Cegonha Itapira (R$ 311,34)';
+      motivoValorCurto = `Tabela Cegonha Hazul para Itapira (${distanciaKm} km)`;
+      motivoValor = `Tabela oficial de Cegonha do Grupo Hazul para rota Mogi ⟷ Itapira (~${distanciaKm} km). Custo base da viagem na cegonha: R$ 311,34.`;
+    } else if (Math.abs(numCustoViagem - 2050) < 1 || targetCity === 'PARNAIBA') {
+      motivoValorBadge = 'Tabela Cegonha Parnaíba (R$ 2.050)';
+      motivoValorCurto = `Tabela Cegonha Hazul para Santana de Parnaíba (${distanciaKm} km)`;
+      motivoValor = `Tabela oficial de Cegonha do Grupo Hazul para rota Mogi ⟷ Santana de Parnaíba (~${distanciaKm} km). Custo base da viagem na cegonha: R$ 2.050,00.`;
     } else if (numCustoViagem === 180 || oCity === dCity || (oCity.includes('MOGI') && dCity.includes('MOGI'))) {
       motivoValorBadge = 'Tabela Curta (R$ 180)';
       motivoValorCurto = `Tabela Local / Curta Distância (${distanciaKm} km)`;
@@ -1087,7 +1142,7 @@ async function getMonthTransparencyData(spreadsheetId, sheetName) {
     } else if (numCustoViagem > 0) {
       motivoValorBadge = `Tabela Base (R$ ${numCustoViagem.toFixed(0)})`;
       motivoValorCurto = `Valor Base Tabelado (${distanciaKm} km)`;
-      motivoValor = `Valor de custo da prancha/guincho registrado para o trajeto (${distanciaKm} km): ${custoViagem || formatBRL(numCustoViagem)}.`;
+      motivoValor = `Valor de custo do transporte na cegonha registrado para o trajeto (${distanciaKm} km): ${custoViagem || formatBRL(numCustoViagem)}.`;
     } else {
       motivoValorBadge = 'Pendente';
       motivoValorCurto = 'Valor não inserido';
@@ -1098,20 +1153,24 @@ async function getMonthTransparencyData(spreadsheetId, sheetName) {
     let motivoCalculo = '';
     let motivoCalculoCurto = '';
     let motivoCalculoBadge = '';
+    let motivoTitulo = '';
+    let motivoDetalhe = '';
 
     if (veicPorViagem > 1) {
       motivoTitulo = `Otimização: ${veicPorViagem} veículos agrupados no mesmo transporte`;
       motivoDetalhe = `Rota calculada com base em ${targetCity} (Custo total: ${custoViagem || formatBRL(numCustoViagem)}). Rateio entre ${veicPorViagem} veículos = ${custoUnit || formatBRL(numCustoUnit)} por veículo.`;
       motivoCalculoBadge = `Rateio (${veicPorViagem} veículos)`;
       motivoCalculoCurto = `Rateio proporcional (${custoViagem || formatBRL(numCustoViagem)} ÷ ${veicPorViagem})`;
-      motivoCalculo = `Viagem compartilhada: Custo total da prancha (${custoViagem || formatBRL(numCustoViagem)}) rateado igualmente entre os ${veicPorViagem} veículos transportados no mesmo dia (${data}) = ${custoUnit || formatBRL(numCustoUnit)} por carro.`;
+      motivoCalculo = `Viagem compartilhada: Custo total da cegonha (${custoViagem || formatBRL(numCustoViagem)}) rateado igualmente entre os ${veicPorViagem} veículos transportados no mesmo dia (${data}) = ${custoUnit || formatBRL(numCustoUnit)} por carro.`;
     } else if (numCustoViagem > 0) {
+      motivoTitulo = `Frete exclusivo na rota (${targetCity})`;
+      motivoDetalhe = `${motivoValorCurto}. Custo integral (1 único veículo na rota).`;
       motivoCalculoBadge = 'Frete Exclusivo (1 carro)';
       motivoCalculoCurto = 'Custo integral (1 único veículo na rota)';
-      motivoCalculo = `Frete exclusivo: Único transporte agendado nesta rota na data ${data}. O veículo assume 100% do custo da viagem (${custoViagem || formatBRL(numCustoViagem)}).`;
+      motivoCalculo = `Frete exclusivo: Único transporte agendado nesta rota na data ${data}. O veículo assume 100% do custo da viagem na cegonha (${custoViagem || formatBRL(numCustoViagem)}).`;
     } else {
       motivoTitulo = `Frete exclusivo na rota (${targetCity})`;
-      motivoDetalhe = `Transporte único realizado no dia para ${targetCity}. Custo integral conforme tabela: ${custoViagem || formatBRL(numCustoViagem)}.`;
+      motivoDetalhe = `Transporte realizado no dia para ${targetCity}. Aguardando inserção de valor da viagem.`;
       motivoCalculoBadge = 'Aguardando Rateio';
       motivoCalculoCurto = 'Pendente de cálculo';
       motivoCalculo = 'Aguardando inserção de valor da viagem para cálculo de rateio unitário.';

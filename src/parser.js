@@ -152,16 +152,12 @@ function resolveNotaFiscal(data) {
   };
 
   // 1. Tenta identificar pela concessionária de Destino
-  const destinoMatch = matchDealership(data.destino);
-  if (destinoMatch) return destinoMatch;
-  const destinoMatch = dealerships.identifyDealership(data.destino);
-  if (destinoMatch) return destinoMatch.name;
+  const destinoMatch = dealerships.identifyDealership(data.destino) || matchDealership(data.destino);
+  if (destinoMatch) return typeof destinoMatch === 'string' ? destinoMatch : destinoMatch.name;
 
   // 2. Se Destino for externo (Valinhos, Andradas, Funilaria terceirizada), usa a Concessionária de Origem
-  const origemMatch = matchDealership(data.origem);
-  if (origemMatch) return origemMatch;
-  const origemMatch = dealerships.identifyDealership(data.origem);
-  if (origemMatch) return origemMatch.name;
+  const origemMatch = dealerships.identifyDealership(data.origem) || matchDealership(data.origem);
+  if (origemMatch) return typeof origemMatch === 'string' ? origemMatch : origemMatch.name;
 
   // 3. Fallback: se não achar concessionária cadastrada, usa o texto do destino ou origem limpo
   return (data.destino || data.origem || '').trim().toUpperCase();
@@ -172,8 +168,8 @@ function resolveNotaFiscal(data) {
  */
 function resolveTransporte(data) {
   const text = (data.transporte || '').toUpperCase();
-  if (text.includes('CEGONHA')) return 'CEGONHA';
-  return 'PLATAFORMA';
+  if (text.includes('PLATAFORMA') || text.includes('GUINCHO')) return 'PLATAFORMA';
+  return 'CEGONHA';
 }
 
 /**
@@ -318,11 +314,9 @@ function toSheetRow(data, msgDate) {
     deptoNormalizado || 'NOVOS',              // B — DEPARTAMENTO
     data.veiculo || '',                       // C — CARRO
     data.chassiPlaca || '',                   // D — PLACAS/ CHASSIS
-    data.origem || '',                        // E — LOCAL DE COLETA
-    data.destino || '',                       // F — LOCAL DE ENTREGA
     origemPadronizada,                        // E — LOCAL DE COLETA
     destinoPadronizado,                       // F — LOCAL DE ENTREGA
-    transporte,                               // G — VEICULO TRANSPORTE (PLATAFORMA ou CEGONHA)
+    transporte,                               // G — VEICULO TRANSPORTE (CEGONHA ou PLATAFORMA)
     notaFiscal || '',                         // H — NOTA FISCAL
   ];
 }

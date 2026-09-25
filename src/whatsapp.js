@@ -481,10 +481,15 @@ async function handleMessage(message, config, isHistorical = false) {
   // 2. Parser Regex Rápido
   let agendamento = parseAgendamento(body);
 
+  // 2. Se o formato for livre ou informal, aciona o Gemini AI
+  // 3. Fallback inteligente com Google Gemini AI
   // 3. Fallback com Classificador Gemini AI (com contexto e data)
   let classification = null;
   if (!agendamento) {
+    logger.info('Tentando interpretar mensagem com Gemini AI...');
     logger.info('Interpretando mensagem com Gemini AI...');
+    agendamento = await gemini.parseWithGemini(body);
+    if (agendamento) {
     const dataAtual = msgDate ? new Date(msgDate).toLocaleDateString('pt-BR') : new Date().toLocaleDateString('pt-BR');
     classification = await gemini.classifyWithGemini(body, {
       contextoMensagens: recentContext,
@@ -499,6 +504,9 @@ async function handleMessage(message, config, isHistorical = false) {
 
   // Se não foi identificado como agendamento
   if (!agendamento) {
+<<<<<<< HEAD
+    return;
+=======
     // Caso especial: Solicitação de viagem operacional para aprovação humana no painel
     if (classification && (classification.tipoMensagem === 'SOLICITACAO_VIAGEM' || classification.necessitaAprovacao === true)) {
       logger.info(`📋 Viagem operacional identificada ("${body.substring(0, 50)}..."). Enviada para Fila de Aprovação no Painel de Controle!`);
@@ -513,6 +521,8 @@ async function handleMessage(message, config, isHistorical = false) {
       });
       return { isAgendamento: false, requiresApproval: true };
     }
+
+>>>>>>> e16184e (feat: adiciona aba de transparencia, padronizacao de concessionarias, controle de respostas e app desktop)
     const statusType = classification ? (classification.tipoMensagem || 'DESCARTADO') : 'DESCARTADO';
     const reasonText = classification
       ? (classification.motivo || classification.motivoRevisao || classification.tipoMensagem)
@@ -529,6 +539,8 @@ async function handleMessage(message, config, isHistorical = false) {
       timestamp: msgDate,
       author: sender,
       body,
+      status: 'DESCARTADO',
+      reason: 'Conversa ou texto sem veículo/rota identificados',
       status: statusType,
       reason: reasonText,
       extractedData: classification || null,

@@ -169,7 +169,7 @@ Demais locais externos (oficinas, clientes, terceiros), mantenha o nome ou ender
 ---
 
 # 12. TIPO DE TRANSPORTE
-Valores permitidos: PLATAFORMA, CEGONHA (padrão: PLATAFORMA).
+Valores permitidos: CEGONHA, PLATAFORMA (padrão: CEGONHA).
 
 ---
 
@@ -243,7 +243,7 @@ Se for NOVO_AGENDAMENTO:
   "responsavelEntrega": "",
   "destino": "DESTINO",
   "responsavelRecebimento": "",
-  "transporte": "PLATAFORMA",
+  "transporte": "CEGONHA",
   "agendarPara": "DD/MM/AAAA",
   "faturarPara": "CONCESSIONARIA",
   "necessitaRevisao": false,

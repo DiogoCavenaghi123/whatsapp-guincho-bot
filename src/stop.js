@@ -49,10 +49,20 @@ try {
 
   const lines = out.split(/\r?\n/).filter(l => l.trim().length > 0);
   for (const line of lines) {
+<<<<<<< HEAD
+    if (line.includes('src/index.js') || line.includes('src\\index.js')) {
+    if (
+      line.includes('src/index.js') ||
+      line.includes('src\\index.js') ||
+      line.includes('src/dashboard/server.js') ||
+      line.includes('src\\dashboard\\server.js')
+    ) {
+=======
     const isBot = line.includes('src/index.js') || line.includes('src\\index.js');
     const isDashboard = stopAll && (line.includes('src/dashboard/server.js') || line.includes('src\\dashboard\\server.js'));
 
     if (isBot || isDashboard) {
+>>>>>>> e16184e (feat: adiciona aba de transparencia, padronizacao de concessionarias, controle de respostas e app desktop)
       const parts = line.split(',');
       const pid = parts[parts.length - 1].trim();
       if (pid && /^\d+$/.test(pid)) {
