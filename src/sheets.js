@@ -578,8 +578,8 @@ function resolveTripCost(origem, destino, modalidade = 'CEGONHA', qtd = 1, costT
 
 /**
  * Determina se dois transportes pertencem à mesma viagem/frete compartilhado:
- * - Se estão indo para a mesma cidade no mesmo dia
- * - Se um está indo e outro voltando para o mesmo ponto de partida (ida e volta casada)
+ * - Dois transportes só compartilham a mesma viagem se a rota/cidade externa
+ *   em relação à base (Mogi Mirim) for EXATAMENTE a mesma (ex: Mogi <-> SJBV não mistura com Mogi <-> Andradas).
  */
 function areTransportsRelated(t1, t2) {
   const o1 = extractCity(t1.origem);
@@ -589,26 +589,14 @@ function areTransportsRelated(t1, t2) {
 
   if (!d1 || !d2) return false;
 
-  // 1. Indo para a mesma cidade no mesmo dia
-  if (d1 === d2) return true;
-  // 1. Ida e volta casada (um indo e outro voltando para o mesmo local de partida)
-  if ((o1 === d2 && d1 === o2) || (o1 === o2 && d1 === d2)) return true;
+  // Resolve a cidade externa da rota em relação à base de Mogi Mirim
+  const city1 = (o1 === 'MOGI MIRIM') ? d1 : (d1 === 'MOGI MIRIM' ? o1 : d1);
+  const city2 = (o2 === 'MOGI MIRIM') ? d2 : (d2 === 'MOGI MIRIM' ? o2 : d2);
 
-  // 2. Ida e volta casada (um indo e outro voltando para o mesmo local de partida)
-  if (o1 === d2 && d1 === o2) return true;
-  // 2. Indo para a mesma cidade no mesmo dia
-  // Se o destino for a base de retorno (Mogi Mirim), a origem também precisa coincidir
-  if (d1 === d2) {
-    if (d1 === 'MOGI MIRIM') {
-      return o1 === o2;
-    }
-    return true;
-  }
+  if (!city1 || !city2) return false;
 
-  // 3. Compartilham o mesmo par de cidades
-  if ((o1 === o2 && d1 === d2) || (o1 === d2 && d1 === o2)) return true;
-
-  return false;
+  // Só compartilham viagem se a cidade da rota for a mesma!
+  return city1 === city2;
 }
 
 /**
