@@ -110,6 +110,10 @@ function normalizeDepartment(depto) {
 function resolveNotaFiscal(data) {
   const explicit = (data.faturarPara || data.notaFiscal || '').trim();
   if (explicit && explicit.length > 1) {
+    // Se for faturamento dividido ou com porcentagem (ex: 50% Hymax 50% Codive), preserva a instrução literal
+    if (explicit.includes('%') || /\b50\/50\b/i.test(explicit) || /\bMEIO\s+A\s+MEIO\b/i.test(explicit)) {
+      return explicit.toUpperCase();
+    }
     const std = dealerships.standardizeDealershipName(explicit, explicit.toUpperCase());
     return std || explicit.toUpperCase();
   }
@@ -266,6 +270,19 @@ function parseAgendamento(messageBody) {
   if (!result.origem && !result.destino) {
     logger.debug(`Mensagem tem ${matchedCount} campos mas não possui rota mínima`);
     return null;
+  }
+
+  // Normaliza data de agendamento para formato estrito DD/MM/YYYY com 4 dígitos no ano
+  if (result.agendarPara) {
+    const raw = String(result.agendarPara).trim();
+    const dMatch = raw.match(/(\d{1,2})[\/\-](\d{1,2})(?:[\/\-](\d{2,4}))?/);
+    if (dMatch) {
+      const day = String(dMatch[1]).padStart(2, '0');
+      const month = String(dMatch[2]).padStart(2, '0');
+      let year = dMatch[3] ? String(dMatch[3]) : String(new Date().getFullYear());
+      if (year.length === 2) year = '20' + year;
+      result.agendarPara = `${day}/${month}/${year}`;
+    }
   }
 
   logger.debug(`Campos extraídos: ${matchedCount} de ${FIELD_PATTERNS.length}`);

@@ -368,15 +368,24 @@ const DEFAULT_PLATAFORMA_COSTS = new Map([
 ]);
 
 const DEFAULT_CEGONHA_COSTS = new Map([
-  ['SJBV', 1013.00],
-  ['CAMPINAS', 1009.95],
-  ['VALINHOS', 1109.95],
+  ['SJBV', 1081.56],
+  ['CAMPINAS', 909.75],
+  ['VALINHOS', 1014.64],
   ['VINHEDO', 1154.49],
   ['ITAPIRA', 311.34],
   ['ANDRADAS', 1100.00],
   ['PARNAIBA', 2050.00],
 ]);
 let transportCostCache = null;
+
+/**
+ * Verifica se a cidade pertence ao hub base operacional do Grupo Hazul (Mogi Mirim / Mogi Guaçu)
+ */
+function isBaseCity(c) {
+  if (!c) return false;
+  const norm = String(c).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
+  return norm.includes('MOGI MIRIM') || norm.includes('MOGI GUACU') || norm === 'MM' || norm === 'MG';
+}
 
 /**
  * Normaliza nomes de locais e concessionárias para cidades-base de operação.
@@ -395,7 +404,7 @@ function extractCity(str) {
   if (s.includes('SJBV') || s.includes('SAO JOAO') || s.includes('BOA VISTA') || s.includes('KENTO SJ') || s.includes('XIAN SJ')) {
     return 'SJBV';
   }
-  if (s.includes('MOGI GUACU') || s.includes('MOGI GUAÇU')) {
+  if (s.includes('MOGI GUACU') || s.includes('MOGI GUAÇU') || (s.includes('HYMAX') && !s.includes('POCOS') && !s.includes('CALDAS'))) {
     return 'MOGI GUAÇU';
   }
   if (s.includes('MOGI') || s.includes('MM') || s.includes('REPARACAO') || s.includes('DUETO') || s.includes('DIVEM') || s.includes('PEUGEOT') || s.includes('CITROEN') || s.includes('PERFEITO')) {
@@ -408,7 +417,7 @@ function extractCity(str) {
   if (s.includes('VINHEDO')) return 'VINHEDO';
   if (s.includes('ITAPIRA')) return 'ITAPIRA';
   if (s.includes('ANDRADAS') || s.includes('RICARTI') || s.includes('NOVA VIA')) return 'ANDRADAS';
-  if (s.includes('POCOS') || s.includes('CALDAS') || s.includes('HYMAX')) return 'POÇOS DE CALDAS';
+  if (s.includes('POCOS') || s.includes('CALDAS')) return 'POÇOS DE CALDAS';
   if (s.includes('INDAIATUBA')) return 'INDAIATUBA';
   if (s.includes('JUNDIAI')) return 'JUNDIAÍ';
 
@@ -489,9 +498,9 @@ async function loadTransportCostTable(spreadsheetId, forceRefresh = false) {
     if (!plataformaCosts.has('ANDRADAS')) plataformaCosts.set('ANDRADAS', 1100.00);
 
     // Valores padrão oficiais da Cegonha (Grupo Hazul)
-    if (!cegonhaCosts.has('SJBV')) cegonhaCosts.set('SJBV', 1013.00);
-    if (!cegonhaCosts.has('CAMPINAS')) cegonhaCosts.set('CAMPINAS', 1009.95);
-    if (!cegonhaCosts.has('VALINHOS')) cegonhaCosts.set('VALINHOS', 1109.95);
+    if (!cegonhaCosts.has('SJBV')) cegonhaCosts.set('SJBV', 1081.56);
+    if (!cegonhaCosts.has('CAMPINAS')) cegonhaCosts.set('CAMPINAS', 909.75);
+    if (!cegonhaCosts.has('VALINHOS')) cegonhaCosts.set('VALINHOS', 1014.64);
     if (!cegonhaCosts.has('VINHEDO')) cegonhaCosts.set('VINHEDO', 1154.49);
     if (!cegonhaCosts.has('ITAPIRA')) cegonhaCosts.set('ITAPIRA', 311.34);
     if (!cegonhaCosts.has('ANDRADAS')) cegonhaCosts.set('ANDRADAS', 1100.00);
@@ -510,9 +519,9 @@ async function loadTransportCostTable(spreadsheetId, forceRefresh = false) {
         ['ANDRADAS', 1100.00],
       ]),
       cegonhaCosts: new Map([
-        ['SJBV', 1013.00],
-        ['CAMPINAS', 1009.95],
-        ['VALINHOS', 1109.95],
+        ['SJBV', 1081.56],
+        ['CAMPINAS', 909.75],
+        ['VALINHOS', 1014.64],
         ['VINHEDO', 1154.49],
         ['ITAPIRA', 311.34],
         ['ANDRADAS', 1100.00],
@@ -535,23 +544,23 @@ function resolveTripCost(origem, destino, modalidade = 'CEGONHA', qtd = 1, costT
   const o = extractCity(origem);
   const d = extractCity(destino);
 
-  let targetCity = (o === 'MOGI MIRIM') ? d : (d === 'MOGI MIRIM' ? o : d);
+  let targetCity = isBaseCity(o) ? d : (isBaseCity(d) ? o : d);
   if (!targetCity) targetCity = d || o || 'CAMPINAS';
 
   const costs = costTable || transportCostCache;
   const isCegonha = !modalidade || modalidade.toUpperCase().includes('CEGONHA');
-  let totalTrip = isCegonha ? 1009.95 : 760.61; // Padrão Campinas
+  let totalTrip = isCegonha ? 909.75 : 760.61; // Padrão Campinas
 
   if (isCegonha) {
     if (costs && costs.cegonhaCosts && costs.cegonhaCosts.has(targetCity)) {
       const c = costs.cegonhaCosts.get(targetCity);
-      totalTrip = typeof c === 'number' ? c : (c[1] || 1009.95);
+      totalTrip = typeof c === 'number' ? c : (c[1] || 909.75);
     } else if (DEFAULT_CEGONHA_COSTS.has(targetCity)) {
       totalTrip = DEFAULT_CEGONHA_COSTS.get(targetCity);
     } else if (targetCity === 'ANDRADAS') {
       totalTrip = 1100.00;
     } else if (targetCity === 'ITAPIRA' && (o === 'CAMPINAS' || d === 'CAMPINAS')) {
-      totalTrip = 1009.95;
+      totalTrip = 909.75;
     }
   } else {
     if (costs && costs.plataformaCosts && costs.plataformaCosts.has(targetCity)) {
@@ -579,7 +588,7 @@ function resolveTripCost(origem, destino, modalidade = 'CEGONHA', qtd = 1, costT
 /**
  * Determina se dois transportes pertencem à mesma viagem/frete compartilhado:
  * - Dois transportes só compartilham a mesma viagem se a rota/cidade externa
- *   em relação à base (Mogi Mirim) for EXATAMENTE a mesma (ex: Mogi <-> SJBV não mistura com Mogi <-> Andradas).
+ *   em relação à base (Mogi Mirim / Mogi Guaçu) for EXATAMENTE a mesma (ex: Mogi <-> SJBV não mistura com Mogi <-> Andradas).
  */
 function areTransportsRelated(t1, t2) {
   const o1 = extractCity(t1.origem);
@@ -589,13 +598,19 @@ function areTransportsRelated(t1, t2) {
 
   if (!d1 || !d2) return false;
 
-  // Resolve a cidade externa da rota em relação à base de Mogi Mirim
-  const city1 = (o1 === 'MOGI MIRIM') ? d1 : (d1 === 'MOGI MIRIM' ? o1 : d1);
-  const city2 = (o2 === 'MOGI MIRIM') ? d2 : (d2 === 'MOGI MIRIM' ? o2 : d2);
+  const bO1 = isBaseCity(o1), bD1 = isBaseCity(d1);
+  const bO2 = isBaseCity(o2), bD2 = isBaseCity(d2);
+
+  // Se ambos os trajetos forem internos entre as bases (ex: Mogi Mirim <-> Mogi Guaçu)
+  if (bO1 && bD1 && bO2 && bD2) return true;
+
+  // Resolve a cidade externa da rota em relação à base operacional (Mogi Mirim / Mogi Guaçu)
+  const city1 = bO1 ? d1 : (bD1 ? o1 : d1);
+  const city2 = bO2 ? d2 : (bD2 ? o2 : d2);
 
   if (!city1 || !city2) return false;
 
-  // Só compartilham viagem se a cidade da rota for a mesma!
+  // Só compartilham viagem se a cidade externa da rota for a mesma!
   return city1 === city2;
 }
 
