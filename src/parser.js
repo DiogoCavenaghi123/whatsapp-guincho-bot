@@ -424,12 +424,59 @@ function extractCancellationTarget(text) {
     placa = parsed.chassiPlaca.replace(/[^A-Z0-9]/gi, '').toUpperCase();
   }
 
+  let veiculo = parsed?.veiculo || null;
+  if (!veiculo) {
+    const veicMatch = clean.match(/(?:VE[IÍ]CULO(?!\s+(?:IMOBILIZADO|TRANSPORTE))|CARRO|MODELO)\s*:?\s*([^\n\r]+)/i);
+    if (veicMatch) {
+      veiculo = veicMatch[1].replace(/^[*_~]+|[*_~]+$/g, '').trim();
+    }
+  }
+
   return {
     chassi: chassi || null,
     placa: placa || null,
-    veiculo: parsed?.veiculo || null,
+    veiculo: veiculo || null,
     data: parsed?.agendarPara || null,
   };
+}
+
+/**
+ * Extrai uma data de reagendamento informada em uma mensagem de confirmação
+ * (ex: "Agendado 29/09 cegonha", "Agendado para 29/09", "Confirmado 29/09/2026", "29/09 cegonha").
+ *
+ * @param {string} text
+ * @param {Date}   [referenceDate=new Date()]
+ * @returns {string|null} — Data formatada DD/MM/YYYY ou null
+ */
+function extractRescheduleDate(text, referenceDate = new Date()) {
+  if (!text || typeof text !== 'string') return null;
+  const clean = text.replace(/[*_~]/g, '').trim();
+
+  // Procura padrão de data DD/MM ou DD/MM/YYYY ou DD/MM/YY
+  const match = clean.match(/(?:(?:agendad[oa]|confirmad[oa]|para|dia)\s*(?:guincho|cegonha)?\s*|^|\s)(\d{1,2})[\/\-\.](\d{1,2})(?:[\/\-\.](\d{2,4}))?/i);
+  if (!match) return null;
+
+  const day = parseInt(match[1], 10);
+  const month = parseInt(match[2], 10);
+  if (day < 1 || day > 31 || month < 1 || month > 12) return null;
+
+  let year = match[3] ? parseInt(match[3], 10) : null;
+  const refYear = referenceDate.getFullYear();
+
+  if (year) {
+    if (year < 100) year += 2000;
+  } else {
+    const curMonth = referenceDate.getMonth() + 1;
+    if (month < curMonth - 2) {
+      year = refYear + 1;
+    } else {
+      year = refYear;
+    }
+  }
+
+  const dd = String(day).padStart(2, '0');
+  const mm = String(month).padStart(2, '0');
+  return `${dd}/${mm}/${year}`;
 }
 
 module.exports = {
@@ -437,10 +484,12 @@ module.exports = {
   isOperationalNoise,
   isCancellationRequest,
   extractCancellationTarget,
+  extractRescheduleDate,
   toSheetRow,
   getHeaders,
   normalizeDepartment,
   resolveNotaFiscal,
   resolveTransporte,
 };
+
 

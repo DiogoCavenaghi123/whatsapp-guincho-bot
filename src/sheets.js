@@ -1065,6 +1065,185 @@ async function findAndCancelTransport(spreadsheetId, target = {}) {
 }
 
 /**
+ * Localiza um agendamento na planilha e atualiza EXCLUSIVAMENTE a sua data (Coluna A),
+ * mantendo intactos o tipo de transporte, nota fiscal, departamento e demais dados.
+ * Em seguida, recalcula os agrupamentos da aba para refletir a nova data.
+ *
+ * @param {string} spreadsheetId
+ * @param {{ chassi?: string, placa?: string, veiculo?: string, data?: string }} target
+ * @param {string} newDateStr — Nova data no formato DD/MM/YYYY (ex: '29/09/2026')
+ * @returns {Promise<{ success: boolean, updated?: object, notFound?: boolean, unchanged?: boolean }>}
+ */
+async function findAndUpdateTransportDate(spreadsheetId, target = {}, newDateStr) {
+  const meta = await getSpreadsheetMetadata(spreadsheetId);
+  const activeTab = await resolveSheetTab(spreadsheetId);
+
+  // Lista de abas candidatas: aba ativa primeiro, depois abas de meses
+  const candidateTabs = [activeTab];
+  for (const t of (meta.sheetTitles || [])) {
+    if (!candidateTabs.includes(t) && /^(JANEIRO|FEVEREIRO|MARCO|MARÇO|ABRIL|MAIO|JUNHO|JULHO|AGOSTO|SETEMBRO|OUTUBRO|NOVEMBRO|DEZEMBRO)\s+\d{4}$/i.test(t.trim())) {
+      candidateTabs.push(t);
+    }
+  }
+
+  const cleanChassi = (target.chassi || '').trim().toUpperCase();
+  const cleanPlaca = (target.placa || '').trim().toUpperCase();
+  const cleanVeiculo = (target.veiculo || '').trim().toUpperCase();
+  const targetDateNorm = normalizeDateStr(target.data || '');
+  const newDateNorm = normalizeDateStr(newDateStr);
+
+  for (const tab of candidateTabs) {
+    const rows = await getSheetRows(spreadsheetId, tab, false); // busca sem cache
+    let matchedRowIndex = -1;
+    let matchedRow = null;
+
+    // Busca de baixo para cima (mais recente primeiro)
+    for (let i = rows.length - 1; i >= 2; i--) {
+      const r = rows[i] || [];
+      const rowDate = normalizeDateStr(r[0] || '');
+      const rowCarro = (r[2] || '').trim().toUpperCase();
+      const rowChassiPlaca = (r[3] || '').trim().toUpperCase();
+
+      if (!rowCarro && !rowChassiPlaca) continue;
+
+      // 1. Prioridade 1: Match por Chassi (mínimo 5 caracteres)
+      if (cleanChassi && cleanChassi.length >= 5 && rowChassiPlaca.includes(cleanChassi)) {
+        matchedRowIndex = i;
+        matchedRow = r;
+        break;
+      }
+
+      // 2. Prioridade 2: Match por Placa (mínimo 6 caracteres)
+      if (cleanPlaca && cleanPlaca.length >= 6 && rowChassiPlaca.includes(cleanPlaca)) {
+        matchedRowIndex = i;
+        matchedRow = r;
+        break;
+      }
+
+      // 3. Prioridade 3: Match por Veículo e Data (se Chassi/Placa não vieram)
+      if (!cleanChassi && !cleanPlaca && cleanVeiculo && cleanVeiculo.length >= 3) {
+        if (rowCarro.includes(cleanVeiculo)) {
+          if (!targetDateNorm || rowDate === targetDateNorm) {
+            matchedRowIndex = i;
+            matchedRow = r;
+            break;
+          }
+        }
+      }
+    }
+
+    if (matchedRowIndex !== -1 && matchedRow) {
+      const rowNumber = matchedRowIndex + 1; // 1-indexed
+      const oldDate = matchedRow[0] || '';
+      const oldDateNorm = normalizeDateStr(oldDate);
+
+      // Se a data já for a mesma, nada a fazer
+      if (oldDateNorm === newDateNorm) {
+        logger.info(`Agendamento de ${matchedRow[2]} na aba "${tab}" já está com a data ${newDateStr}.`);
+        return {
+          success: true,
+          unchanged: true,
+          updated: {
+            tab,
+            rowNumber,
+            carro: matchedRow[2] || '',
+            chassi: matchedRow[3] || '',
+            origem: matchedRow[4] || '',
+            destino: matchedRow[5] || '',
+            modalidade: matchedRow[6] || '',
+            oldDate,
+            newDate: newDateStr,
+            moved: false,
+          },
+        };
+      }
+
+      // Converte nova data para objeto Date e resolve a aba destino
+      const parts = newDateStr.split(/[\/\-]/);
+      let targetDateObj = new Date();
+      if (parts.length === 3) {
+        const d = parseInt(parts[0], 10);
+        const m = parseInt(parts[1], 10) - 1;
+        const y = parseInt(parts[2], 10);
+        targetDateObj = new Date(y, m, d, 12, 0, 0);
+      }
+      const newTab = await resolveSheetTab(spreadsheetId, targetDateObj);
+
+      if (newTab === tab) {
+        // MESMA ABA: Altera EXCLUSIVAMENTE a Coluna A (DATA)
+        await retryWithBackoff(async () => {
+          await sheetsClient.spreadsheets.values.update({
+            spreadsheetId,
+            range: `'${tab}'!A${rowNumber}`,
+            valueInputOption: 'USER_ENTERED',
+            requestBody: {
+              values: [[newDateStr]],
+            },
+          });
+        });
+
+        // Invalida cache e recalcula custos e agrupamentos
+        sheetRowsCache.delete(tab);
+        try {
+          await recalculateMonthTransportCosts(spreadsheetId, tab);
+        } catch (err) {
+          logger.warn(`Aviso ao recalcular custos pós-atualização de data: ${err.message}`);
+        }
+
+        const updated = {
+          tab,
+          rowNumber,
+          carro: matchedRow[2] || '',
+          chassi: matchedRow[3] || '',
+          origem: matchedRow[4] || '',
+          destino: matchedRow[5] || '',
+          modalidade: matchedRow[6] || '',
+          oldDate,
+          newDate: newDateStr,
+          moved: false,
+        };
+
+        logger.success(`Data do transporte ${updated.carro} (${updated.chassi}) atualizada para ${newDateStr} na linha ${rowNumber} da aba "${tab}"!`);
+        return { success: true, updated };
+      } else {
+        // MUDANÇA DE ABA (Novo Ciclo):
+        // 1. Clona os dados da linha original com a nova data
+        const updatedRow = [...matchedRow];
+        updatedRow[0] = newDateStr;
+
+        // 2. Remove da aba antiga
+        await deleteRow(spreadsheetId, tab, rowNumber);
+        sheetRowsCache.delete(tab);
+        try {
+          await recalculateMonthTransportCosts(spreadsheetId, tab);
+        } catch (_) {}
+
+        // 3. Insere na nova aba preservando exatamente todas as informações (incluindo tipo de transporte)
+        await appendRow(spreadsheetId, updatedRow, targetDateObj);
+
+        const updated = {
+          oldTab: tab,
+          tab: newTab,
+          carro: matchedRow[2] || '',
+          chassi: matchedRow[3] || '',
+          origem: matchedRow[4] || '',
+          destino: matchedRow[5] || '',
+          modalidade: matchedRow[6] || '',
+          oldDate,
+          newDate: newDateStr,
+          moved: true,
+        };
+
+        logger.success(`Data do transporte ${updated.carro} atualizada para ${newDateStr} e movida de "${tab}" para "${newTab}"!`);
+        return { success: true, updated };
+      }
+    }
+  }
+
+  return { success: false, notFound: true };
+}
+
+/**
  * Recalcula e preenche os custos de viagem, quantidade de veículos agrupados
  * e fórmulas unitárias para todas as viagens de uma aba (mês).
  *
@@ -1148,7 +1327,7 @@ async function recalculateMonthTransportCosts(spreadsheetId, sheetName) {
     for (const g of groups) {
       const qtd = g.length;
       const first = g[0];
-      const costInfo = resolveTripCost(first.coleta, first.entrega, 'CEGONHA', qtd, costTable);
+      const costInfo = resolveTripCost(first.coleta, first.entrega, first.veicTransp || 'CEGONHA', qtd, costTable);
 
       for (const item of g) {
         const rowNum = item.rowNumber;
@@ -1157,9 +1336,10 @@ async function recalculateMonthTransportCosts(spreadsheetId, sheetName) {
         const newFormula = `=I${rowNum}/J${rowNum}`;
         const newFaturado = item.faturado || ' NÃO FATURADO';
 
+        // Atualiza estritamente I:L para NUNCA alterar o tipo de transporte (G) nem a Nota Fiscal (H)
         updateBatch.push({
-          range: `'${sheetName}'!G${rowNum}:L${rowNum}`,
-          values: [['CEGONHA', item.nf || '', newCusto, newQtd, newFormula, newFaturado]],
+          range: `'${sheetName}'!I${rowNum}:L${rowNum}`,
+          values: [[newCusto, newQtd, newFormula, newFaturado]],
         });
 
         details.push({
@@ -1435,4 +1615,5 @@ module.exports = {
   getMonthTransparencyData,
   updateRowRoute,
   findAndCancelTransport,
+  findAndUpdateTransportDate,
 };

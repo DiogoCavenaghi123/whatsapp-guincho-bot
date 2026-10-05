@@ -17,6 +17,7 @@ const {
   isOperationalNoise,
   isCancellationRequest,
   extractCancellationTarget,
+  extractRescheduleDate,
 } = require('./parser');
 const sheets = require('./sheets');
 const gemini = require('./gemini');
@@ -512,6 +513,134 @@ async function handleCancellation(message, body, config, msgDate, sender, aiData
 }
 
 /**
+ * Verifica se a mensagem foi enviada pelo Vanderlei G (+55 19 99924-1783).
+ */
+function isVanderleiSender(message, contact = null, senderName = '') {
+  const allowedNumbers = ['5519999241783', '551999241783', '19999241783', '1999241783'];
+
+  // 1. Checa author / JID
+  const authorClean = String(message.author || '').replace(/\D/g, '');
+  if (allowedNumbers.some((num) => authorClean.includes(num))) return true;
+
+  // 2. Checa contato
+  if (contact) {
+    const contactNum = String(contact.number || '').replace(/\D/g, '');
+    if (allowedNumbers.some((num) => contactNum.includes(num))) return true;
+
+    const contactName = String(contact.name || contact.pushname || '').toLowerCase();
+    if (contactName.includes('vanderlei')) return true;
+  }
+
+  // 3. Checa notifyName / senderName
+  const notify = String(message._data?.notifyName || senderName || '').toLowerCase();
+  if (notify.includes('vanderlei')) return true;
+
+  return false;
+}
+
+/**
+ * Trata uma confirmação ou alteração de data enviada pelo Vanderlei respondendo um agendamento.
+ * Altera EXCLUSIVAMENTE a data do transporte na planilha, mantendo o tipo de transporte e
+ * demais colunas intactos.
+ */
+async function handleVanderleiReschedule(message, quotedMsg, newDateStr, config, msgDate, sender) {
+  const quotedBody = quotedMsg.body || '';
+  const parsedQuoted = parseAgendamento(quotedBody);
+  const targetExtracted = extractCancellationTarget(quotedBody);
+
+  const target = {
+    chassi: parsedQuoted?.chassiPlaca || targetExtracted.chassi || null,
+    placa: targetExtracted.placa || null,
+    veiculo: parsedQuoted?.veiculo || targetExtracted.veiculo || null,
+    data: parsedQuoted?.agendarPara || targetExtracted.data || null,
+  };
+
+  logger.info(`🔍 Localizando agendamento para alteração de data solicitada por Vanderlei G:`, {
+    target,
+    novaData: newDateStr,
+  });
+
+  const result = await sheets.findAndUpdateTransportDate(config.spreadsheetId, target, newDateStr);
+  const msgId = message.id?._serialized || String(message.timestamp);
+
+  if (result.success && result.updated) {
+    const u = result.updated;
+    logger.success(`📅 Data do transporte atualizada com sucesso para ${u.newDate}: ${u.carro} (${u.chassi || 'sem chassi'}) na aba "${u.tab}".`);
+
+    history.recordMessage({
+      messageId: msgId,
+      timestamp: msgDate,
+      author: sender,
+      body: message.body,
+      status: 'DATA_ATUALIZADA_VANDERLEI',
+      reason: `Data atualizada para ${u.newDate} por Vanderlei G (linha ${u.rowNumber} na aba "${u.tab}")`,
+      extractedData: u,
+    });
+
+    if (settings.isGroupRepliesEnabled() && !result.unchanged) {
+      try {
+        let reply = `📅 *DATA DO AGENDAMENTO ATUALIZADA!* 🚛\n\n`;
+        reply += `🚗 *Veículo:* ${u.carro || 'N/D'}\n`;
+        if (u.chassi) reply += `🔖 *Chassi:* ${u.chassi}\n`;
+        reply += `🗓️ *Nova Data do Transporte:* ${u.newDate}\n`;
+        if (u.oldDate && u.oldDate !== u.newDate) {
+          reply += `🗓️ *Data Anterior:* ${u.oldDate}\n`;
+        }
+        reply += `\n✓ Atualizado na planilha Google Sheets com sucesso!`;
+        await message.reply(reply);
+        logger.success('Confirmação de alteração de data enviada no grupo do WhatsApp!');
+      } catch (replyErr) {
+        logger.warn(`Aviso ao enviar resposta de alteração de data: ${replyErr.message}`);
+      }
+    }
+
+    return { isAgendamento: false, isReschedule: true, updated: u };
+  } else {
+    // Se o agendamento ainda não existia na planilha (ex: bot estava desligado quando enviaram o agendamento original),
+    // registra agora o novo agendamento com a data confirmada pelo Vanderlei!
+    if (parsedQuoted && (parsedQuoted.veiculo || parsedQuoted.chassiPlaca)) {
+      logger.info(`Agendamento citado não encontrado na planilha. Inserindo novo registro com a data confirmada por Vanderlei: ${newDateStr}`);
+      parsedQuoted.agendarPara = newDateStr;
+      const rowData = toSheetRow(parsedQuoted, msgDate);
+      rowData[0] = newDateStr;
+
+      try {
+        const inserted = await sheets.appendRow(config.spreadsheetId, rowData, msgDate);
+        if (inserted) {
+          logger.success(`Agendamento inserido com sucesso a partir da resposta de Vanderlei G.`);
+          history.recordMessage({
+            messageId: msgId,
+            timestamp: msgDate,
+            author: sender,
+            body: message.body,
+            status: 'REGISTRADO_POR_RESPOSTA',
+            reason: `Agendamento registrado a partir da resposta de Vanderlei G com data ${newDateStr}`,
+            extractedData: parsedQuoted,
+          });
+          return { isAgendamento: true, inserted: true };
+        }
+      } catch (insertErr) {
+        logger.warn(`Aviso ao inserir agendamento a partir da resposta do Vanderlei: ${insertErr.message}`);
+      }
+    }
+
+    logger.warn(`Agendamento respondido por Vanderlei não foi localizado na planilha para alteração de data.`);
+
+    history.recordMessage({
+      messageId: msgId,
+      timestamp: msgDate,
+      author: sender,
+      body: message.body,
+      status: 'REAGENDAMENTO_NAO_ENCONTRADO',
+      reason: 'Resposta de Vanderlei recebida, mas o agendamento correspondente não foi encontrado na planilha',
+      extractedData: { target, novaData: newDateStr },
+    });
+
+    return { isAgendamento: false, isReschedule: true, notFound: true };
+  }
+}
+
+/**
  * Processa uma mensagem recebida.
  */
 async function handleMessage(message, config, isHistorical = false) {
@@ -540,9 +669,10 @@ async function handleMessage(message, config, isHistorical = false) {
 
   // Monta identificação do remetente
   let sender = message.author || message._data?.notifyName || chatId;
+  let contact = null;
   if (!isHistorical) {
     try {
-      const contact = await message.getContact();
+      contact = await message.getContact();
       sender = contact.pushname || contact.name || sender;
     } catch (e) {}
   }
@@ -553,6 +683,23 @@ async function handleMessage(message, config, isHistorical = false) {
   if (isCancellationRequest(body)) {
     logger.info(`🚫 Solicitação de cancelamento detectada: "${body.substring(0, 50)}..."`);
     return await handleCancellation(message, body, config, msgDate, sender);
+  }
+
+  // 1.1. Checagem de alteração/confirmação de data por Vanderlei G (+55 19 99924-1783)
+  const isVanderlei = isVanderleiSender(message, contact, sender);
+  if (isVanderlei && message.hasQuotedMsg) {
+    const rescheduleDate = extractRescheduleDate(body, msgDate);
+    if (rescheduleDate) {
+      logger.info(`📅 Vanderlei G respondeu agendamento definindo data: "${body}" -> Nova Data: ${rescheduleDate}`);
+      try {
+        const quotedMsg = await message.getQuotedMessage();
+        if (quotedMsg && quotedMsg.body) {
+          return await handleVanderleiReschedule(message, quotedMsg, rescheduleDate, config, msgDate, sender);
+        }
+      } catch (quoteErr) {
+        logger.warn(`Aviso ao obter mensagem respondida por Vanderlei: ${quoteErr.message}`);
+      }
+    }
   }
 
   // 2. Contexto recente para IA
@@ -739,4 +886,6 @@ module.exports = {
   cleanupStaleBrowserSession,
   scanGroupMessages,
   handleMessage,
+  isVanderleiSender,
+  handleVanderleiReschedule,
 };
