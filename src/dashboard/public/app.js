@@ -18,7 +18,7 @@ const state = {
   logsSearchTerm: '',
   autoScroll: true,
   isBotRunning: false,
-  groupRepliesEnabled: true,
+  groupRepliesEnabled: false,
   approvals: [],
   activeSheetTab: 'OUTUBRO 2026',
   cycleRange: '',
@@ -30,6 +30,14 @@ const state = {
 const navTabs = document.querySelectorAll('.nav-tab');
 const tabPanels = document.querySelectorAll('.tab-panel');
 const themeToggle = document.getElementById('themeToggle');
+
+// Sidebar Lateral
+const appSidebar = document.getElementById('appSidebar');
+const btnSidebarToggle = document.getElementById('btnSidebarToggle');
+const btnToggleSidebarNav = document.getElementById('btnToggleSidebarNav');
+const btnSidebarCollapse = document.getElementById('btnSidebarCollapse');
+const sidebarBackdrop = document.getElementById('sidebarBackdrop');
+const approvalsTabBadgeMini = document.getElementById('approvalsTabBadgeMini');
 
 // Connection badge
 const statusDot = document.getElementById('statusDot');
@@ -264,8 +272,40 @@ function switchTab(targetTabId) {
   }
 }
 
+// ── Controle do Menu Lateral (Sidebar) ──────────────────────────────────
+function toggleSidebar(expand) {
+  if (!appSidebar) return;
+  const isCurrentlyMinimized = appSidebar.classList.contains('minimized');
+  const shouldExpand = expand !== undefined ? expand : isCurrentlyMinimized;
+
+  appSidebar.classList.toggle('minimized', !shouldExpand);
+  appSidebar.classList.toggle('expanded', shouldExpand);
+
+  if (sidebarBackdrop) {
+    sidebarBackdrop.classList.toggle('active', shouldExpand && window.innerWidth <= 768);
+  }
+}
+
+if (btnSidebarToggle) btnSidebarToggle.addEventListener('click', () => toggleSidebar());
+if (btnToggleSidebarNav) btnToggleSidebarNav.addEventListener('click', () => toggleSidebar());
+if (btnSidebarCollapse) btnSidebarCollapse.addEventListener('click', () => toggleSidebar(false));
+if (sidebarBackdrop) sidebarBackdrop.addEventListener('click', () => toggleSidebar(false));
+
+// Atalho global Ctrl+B / Cmd+B para alternar menu lateral
+document.addEventListener('keydown', (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'b') {
+    e.preventDefault();
+    toggleSidebar();
+  }
+});
+
 navTabs.forEach((tab) => {
-  tab.addEventListener('click', () => switchTab(tab.dataset.tab));
+  tab.addEventListener('click', () => {
+    switchTab(tab.dataset.tab);
+    if (window.innerWidth <= 768) {
+      toggleSidebar(false);
+    }
+  });
 });
 
 btnQuickRescan.addEventListener('click', () => {
@@ -421,6 +461,14 @@ async function fetchStatus() {
           approvalsTabBadge.style.display = 'inline-flex';
         } else {
           approvalsTabBadge.style.display = 'none';
+        }
+      }
+      if (approvalsTabBadgeMini) {
+        if (pending > 0) {
+          approvalsTabBadgeMini.textContent = pending > 9 ? '9+' : pending;
+          approvalsTabBadgeMini.style.display = 'flex';
+        } else {
+          approvalsTabBadgeMini.style.display = 'none';
         }
       }
     }
@@ -1052,7 +1100,7 @@ function updateRepliesUI(enabled) {
     btnHeaderToggleReplies.classList.toggle('active', enabled);
     btnHeaderToggleReplies.classList.toggle('inactive', !enabled);
     if (headerReplyIcon) headerReplyIcon.textContent = enabled ? '🔔' : '🔕';
-    if (headerReplyText) headerReplyText.textContent = enabled ? 'Mensagens no Grupo: ON' : 'Modo Silencioso: OFF';
+    if (headerReplyText) headerReplyText.textContent = enabled ? 'Mensagens: ON' : 'Mensagens: OFF';
     btnHeaderToggleReplies.title = enabled
       ? 'Respostas ativadas no grupo. Clique para ativar Modo Silencioso.'
       : 'Modo silencioso ativo (sem mensagens no grupo). Clique para reativar.';

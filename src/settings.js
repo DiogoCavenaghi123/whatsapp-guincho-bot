@@ -21,10 +21,10 @@ function ensureLogsDir() {
 }
 
 function getDefaultSettings() {
-  const envDefault = process.env.WHATSAPP_SEND_REPLIES !== 'false' &&
-                     process.env.WHATSAPP_REPLY_ENABLED !== 'false';
+  const envDefault = process.env.WHATSAPP_SEND_REPLIES === 'true' ||
+                     process.env.WHATSAPP_REPLY_ENABLED === 'true';
   return {
-    groupRepliesEnabled: envDefault, // true por padrão
+    groupRepliesEnabled: envDefault, // false (desativado) por padrão
     updatedAt: new Date().toISOString(),
   };
 }
@@ -43,6 +43,9 @@ function loadSettings() {
         ...getDefaultSettings(),
         ...parsed,
       };
+      if (typeof parsed.groupRepliesEnabled !== 'boolean') {
+        cachedSettings.groupRepliesEnabled = false;
+      }
       lastMtime = stat.mtimeMs;
       return cachedSettings;
     }
@@ -80,7 +83,7 @@ function saveSettings(newSettings) {
  */
 function isGroupRepliesEnabled() {
   const s = loadSettings();
-  return s.groupRepliesEnabled !== false;
+  return s.groupRepliesEnabled === true;
 }
 
 /**
