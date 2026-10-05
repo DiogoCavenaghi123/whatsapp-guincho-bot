@@ -32,6 +32,7 @@ const tabPanels = document.querySelectorAll('.tab-panel');
 const themeToggle = document.getElementById('themeToggle');
 
 // Sidebar Lateral
+const appLayout = document.getElementById('appLayout');
 const appSidebar = document.getElementById('appSidebar');
 const btnSidebarToggle = document.getElementById('btnSidebarToggle');
 const btnToggleSidebarNav = document.getElementById('btnToggleSidebarNav');
@@ -280,6 +281,10 @@ function toggleSidebar(expand) {
 
   appSidebar.classList.toggle('minimized', !shouldExpand);
   appSidebar.classList.toggle('expanded', shouldExpand);
+
+  if (appLayout) {
+    appLayout.classList.toggle('sidebar-expanded', shouldExpand);
+  }
 
   if (sidebarBackdrop) {
     sidebarBackdrop.classList.toggle('active', shouldExpand && window.innerWidth <= 768);

@@ -131,28 +131,35 @@ body {
 }
 
 /* ── Layout & Sidebar Lateral (Minimizado por padrão) ─────────────────── */
+html, body {
+  overflow-x: hidden;
+  max-width: 100%;
+}
+
 .app-layout {
   display: flex;
   min-height: 100vh;
   width: 100%;
   background-color: var(--bg-app);
   position: relative;
-  overflow-x: hidden;
 }
 
-/* Sidebar lateral */
+/* Sidebar lateral fixa (sempre ocupa 100% da altura da tela sem se perder no scroll) */
 .app-sidebar {
   width: 68px;
   background-color: var(--bg-card);
   border-right: 1px solid var(--border-subtle);
   display: flex;
   flex-direction: column;
-  position: sticky;
+  position: fixed;
+  left: 0;
   top: 0;
+  bottom: 0;
   height: 100vh;
+  height: 100dvh;
   z-index: 50;
   transition: width 0.28s cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow: 2px 0 10px rgba(0, 0, 0, 0.15);
+  box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1);
   flex-shrink: 0;
   user-select: none;
 }
@@ -225,6 +232,17 @@ body {
   padding: 14px 10px;
   overflow-y: auto;
   overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-subtle) transparent;
+}
+
+.sidebar-nav::-webkit-scrollbar {
+  width: 4px;
+}
+
+.sidebar-nav::-webkit-scrollbar-thumb {
+  background: var(--border-subtle);
+  border-radius: 4px;
 }
 
 /* Cada item de aba no menu lateral */
@@ -247,6 +265,7 @@ body {
   position: relative;
   white-space: nowrap;
   text-align: left;
+  flex-shrink: 0;
 }
 
 /* Quando minimizado, centraliza o ícone perfeitamente */
@@ -398,6 +417,13 @@ body {
   min-width: 0;
   display: flex;
   flex-direction: column;
+  margin-left: 68px;
+  transition: margin-left 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.app-sidebar.expanded ~ .app-main,
+.app-layout.sidebar-expanded .app-main {
+  margin-left: 240px;
 }
 
 .app-container {
@@ -1650,6 +1676,12 @@ body {
 
   .app-sidebar.minimized {
     transform: translateX(-100%);
+  }
+
+  .app-main,
+  .app-sidebar.expanded ~ .app-main,
+  .app-layout.sidebar-expanded .app-main {
+    margin-left: 0 !important;
   }
 
   .navbar {
