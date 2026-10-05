@@ -14,9 +14,17 @@ const dealerships = require('./dealerships');
 // para evitar falsos positivos (ex: "DEPTO ENTREGA" antes de "DEPARTAMENTO")
 const FIELD_PATTERNS = [
   {
+    key: 'veiculoImobilizado',
+    pattern: /^VE[IÍ]CULO\s+IMOBILIZADO\s*:?\s*(.+)/i,
+  },
+  {
+    key: 'transporte',
+    pattern: /^(?:VE[IÍ]CULO\s+TRANSPORTE|TIPO\s+DE\s+TRANSPORTE|TRANSPORTE|TIPO)\s*:?\s*(.+)/i,
+  },
+  {
     key: 'veiculo',
-    // "VEICULO:", "VEÍCULO:", "CARRO:", "MODELO:" — mas NÃO "VEÍCULO IMOBILIZADO"
-    pattern: /^(?:VE[IÍ]CULO|CARRO|MODELO)\s*:?\s*(.+)/i,
+    // "VEICULO:", "VEÍCULO:", "CARRO:", "MODELO:" — mas NÃO "VEÍCULO IMOBILIZADO" ou "VEÍCULO TRANSPORTE"
+    pattern: /^(?:VE[IÍ]CULO(?!\s+(?:IMOBILIZADO|TRANSPORTE))|CARRO|MODELO)\s*:?\s*(.+)/i,
   },
   {
     key: 'cor',
@@ -32,18 +40,14 @@ const FIELD_PATTERNS = [
     pattern: /^FREIO\s+ELETR[OÔ]NICO\s*:?\s*(.+)/i,
   },
   {
-    key: 'veiculoImobilizado',
-    pattern: /^VE[IÍ]CULO\s+IMOBILIZADO\s*:?\s*(.+)/i,
-  },
-  {
     key: 'deptoEntrega',
-    // "DEPTO ENTREGA:" — precisa vir ANTES de "DEPARTAMENTO/DEPTO"
+    // "DEPTO ENTREGA:" — precisa vir ANTES de "DEPARTAMENTO/DEPTO/DPTO"
     pattern: /^DEPTO\s+ENTREGA\s*:?\s*(.+)/i,
   },
   {
     key: 'departamento',
-    // "DEPARTAMENTO:" ou "DEPTO:" (sem "ENTREGA" depois)
-    pattern: /^(?:DEPARTAMENTO|DEPTO)\s*:?\s*(.+)/i,
+    // "DEPARTAMENTO:", "DEPTO:", "DPTO:" (sem "ENTREGA" depois)
+    pattern: /^(?:DEPARTAMENTO|DEPTO|DPTO)\s*:?\s*(.+)/i,
   },
   {
     key: 'origem',
@@ -70,13 +74,9 @@ const FIELD_PATTERNS = [
     pattern: /^(?:AGENDAR\s+PARA|AGENDAMENTO|AGENDAR|DATA\s+DO\s+AGENDAMENTO|DATA)\s*:?\s*(.+)/i,
   },
   {
-    key: 'transporte',
-    pattern: /^(?:VE[IÍ]CULO\s+TRANSPORTE|TIPO\s+DE\s+TRANSPORTE|TRANSPORTE|TIPO)\s*:?\s*(.+)/i,
-  },
-  {
     key: 'faturarPara',
-    // "FATURAR PARA:", "FATURAR:", "NOTA FISCAL:", "NF:", "EMPRESA:", "CONCESSIONARIA:"
-    pattern: /^(?:FATURAR\s+(?:PARA|P\/|P)?|FATURAMENTO|NOTA\s+FISCAL|NOTA|NF|EMITIR\s+(?:NF|NOTA)(?:\s+PARA)?|EMPRESA|LOJA|CONCESSION[AÁ]RIA|RAZ[AÃ]O\s+SOCIAL|PAGANTE)\s*:?\s*(.+)/i,
+    // "FATURAR PARA:", "FATURAR:", "FATURAR XIAN", "NOTA FISCAL:", "NF:", "EMPRESA:", "CONCESSIONARIA:"
+    pattern: /^(?:FATURAR(?:\s+(?:PARA|P\/|P))?|FATURAMENTO|NOTA\s+FISCAL|NOTA|NF|EMITIR\s+(?:NF|NOTA)(?:\s+PARA)?|EMPRESA|LOJA|CONCESSION[AÁ]RIA|RAZ[AÃ]O\s+SOCIAL|PAGANTE)\s*:?\s*(.+)/i,
   },
 ];
 
@@ -110,8 +110,8 @@ function normalizeDepartment(depto) {
 function resolveNotaFiscal(data) {
   const explicit = (data.faturarPara || data.notaFiscal || '').trim();
   if (explicit && explicit.length > 1) {
-    return explicit.toUpperCase();
-    return dealerships.standardizeDealershipName(explicit, explicit.toUpperCase());
+    const std = dealerships.standardizeDealershipName(explicit, explicit.toUpperCase());
+    return std || explicit.toUpperCase();
   }
 
   const matchDealership = (text) => {
@@ -293,14 +293,31 @@ function parseAgendamento(messageBody) {
  */
 function toSheetRow(data, msgDate) {
   let dataFormatada = '';
-  if (msgDate instanceof Date) {
-    dataFormatada = msgDate.toLocaleDateString('pt-BR', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-    });
-  } else if (typeof msgDate === 'string') {
-    dataFormatada = msgDate;
+
+  // 1. Prioridade: se houver data explícita no agendamento (ex: "AGENDAR: 29/09/26"), usa ela
+  if (data.agendarPara) {
+    const raw = String(data.agendarPara).trim();
+    const dMatch = raw.match(/(\d{1,2})[\/\-](\d{1,2})(?:[\/\-](\d{2,4}))?/);
+    if (dMatch) {
+      const day = String(dMatch[1]).padStart(2, '0');
+      const month = String(dMatch[2]).padStart(2, '0');
+      let year = dMatch[3] ? String(dMatch[3]) : String(new Date().getFullYear());
+      if (year.length === 2) year = '20' + year;
+      dataFormatada = `${day}/${month}/${year}`;
+    }
+  }
+
+  // 2. Fallback: data de recebimento da mensagem
+  if (!dataFormatada) {
+    if (msgDate instanceof Date) {
+      dataFormatada = msgDate.toLocaleDateString('pt-BR', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+      });
+    } else if (typeof msgDate === 'string') {
+      dataFormatada = msgDate;
+    }
   }
 
   const deptoNormalizado = normalizeDepartment(data.departamento || data.deptoEntrega);
@@ -341,9 +358,85 @@ function getHeaders() {
   ];
 }
 
+/**
+ * Verifica se a mensagem contém instrução clara de cancelamento de agendamento.
+ *
+ * @param {string} text
+ * @returns {boolean}
+ */
+function isCancellationRequest(text) {
+  if (!text || typeof text !== 'string') return false;
+  const clean = text.trim();
+
+  // 1. Mensagem com "CANCELAR", "CANCELADO", "CANCELAMENTO", etc. no final da mensagem
+  // Ex: A pessoa reenvia os dados do agendamento e no final escreve CANCELAR
+  if (/(?:^|\n|\r|\s)(?:CANCELAR|CANCELADO|CANCELAMENTO|CANCELA|FAVOR\s+CANCELAR|SOLICITO\s+CANCELAMENTO|CANCELAR\s+AGENDAMENTO)[.!]?\s*$/i.test(clean)) {
+    return true;
+  }
+
+  // 2. Mensagem iniciada por termo de cancelamento
+  // Ex: "Cancelar chassi 95PEEL61DVB106403" ou "Favor cancelar agendamento..."
+  if (/^(?:CANCELAR|CANCELADO|CANCELAMENTO|CANCELA|FAVOR\s+CANCELAR|PODE\s+CANCELAR|SOLICITO\s+CANCELAMENTO)\b/i.test(clean)) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Extrai os dados do veículo/agendamento a ser cancelado a partir do texto.
+ *
+ * @param {string} text
+ * @returns {{ chassi: string|null, placa: string|null, veiculo: string|null, data: string|null }}
+ */
+function extractCancellationTarget(text) {
+  if (!text || typeof text !== 'string') return {};
+
+  const clean = text.trim();
+
+  // 1. Extrai Chassi (padrão de chassi alfanumérico)
+  let chassi = null;
+  const chassiMatch = clean.match(/CHASSIS?\s*:?\s*([A-HJ-NPR-Z0-9]{5,17})/i) ||
+                      clean.match(/\b([A-HJ-NPR-Z0-9]{17})\b/i);
+  if (chassiMatch) {
+    chassi = chassiMatch[1].toUpperCase();
+  }
+
+  // 2. Extrai Placa (padrão 7 caracteres alfanuméricos)
+  let placa = null;
+  const placaMatch = clean.match(/PLACAS?\s*:?\s*([A-Z]{3}[0-9][0-9A-Z][0-9]{2}|[A-Z]{3}-?[0-9]{4})/i) ||
+                     clean.match(/\b([A-Z]{3}[0-9][0-9A-Z][0-9]{2})\b/i);
+  if (placaMatch) {
+    placa = placaMatch[1].replace(/[^A-Z0-9]/gi, '').toUpperCase();
+  }
+
+  // 3. Tenta obter dados adicionais se for uma mensagem completa parseável
+  let parsed = null;
+  try {
+    parsed = parseAgendamento(clean);
+  } catch (_) {}
+
+  // Se o parser extraiu chassi/placa, usa caso não tenha achado antes
+  if (!chassi && parsed?.chassiPlaca && parsed.chassiPlaca.length >= 10) {
+    chassi = parsed.chassiPlaca.toUpperCase();
+  }
+  if (!placa && parsed?.chassiPlaca && parsed.chassiPlaca.length <= 8) {
+    placa = parsed.chassiPlaca.replace(/[^A-Z0-9]/gi, '').toUpperCase();
+  }
+
+  return {
+    chassi: chassi || null,
+    placa: placa || null,
+    veiculo: parsed?.veiculo || null,
+    data: parsed?.agendarPara || null,
+  };
+}
+
 module.exports = {
   parseAgendamento,
   isOperationalNoise,
+  isCancellationRequest,
+  extractCancellationTarget,
   toSheetRow,
   getHeaders,
   normalizeDepartment,

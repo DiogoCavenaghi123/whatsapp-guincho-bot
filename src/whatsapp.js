@@ -10,7 +10,14 @@ const { Client, LocalAuth } = require('whatsapp-web.js');
 const Message = require('whatsapp-web.js/src/structures/Message');
 const qrcode = require('qrcode-terminal');
 const logger = require('./logger');
-const { parseAgendamento, toSheetRow, resolveNotaFiscal, isOperationalNoise } = require('./parser');
+const {
+  parseAgendamento,
+  toSheetRow,
+  resolveNotaFiscal,
+  isOperationalNoise,
+  isCancellationRequest,
+  extractCancellationTarget,
+} = require('./parser');
 const sheets = require('./sheets');
 const gemini = require('./gemini');
 const history = require('./history');
@@ -431,6 +438,80 @@ async function fetchGroupMessagesSafely(client, groupId, cutoffDate) {
 }
 
 /**
+ * Trata uma solicitação de cancelamento de agendamento:
+ * localiza o registro na planilha, exclui a linha, recalcula custos e envia confirmação.
+ */
+async function handleCancellation(message, body, config, msgDate, sender, aiData = null) {
+  const extracted = extractCancellationTarget(body);
+  const target = {
+    chassi: extracted.chassi || aiData?.chassiPlaca || null,
+    placa: extracted.placa || aiData?.chassiPlaca || null,
+    veiculo: extracted.veiculo || aiData?.veiculo || null,
+    data: extracted.data || aiData?.agendarPara || null,
+  };
+
+  logger.info(`🔍 Buscando agendamento para cancelamento na planilha:`, target);
+  const result = await sheets.findAndCancelTransport(config.spreadsheetId, target);
+  const msgId = message.id?._serialized || String(message.timestamp);
+
+  if (result.success && result.cancelled) {
+    const c = result.cancelled;
+    logger.success(`🚫 Agendamento cancelado com sucesso: ${c.carro} (${c.chassi}) na aba "${c.tab}", linha ${c.rowNumber}.`);
+
+    history.recordMessage({
+      messageId: msgId,
+      timestamp: msgDate,
+      author: sender,
+      body,
+      status: 'CANCELADO',
+      reason: `Agendamento cancelado e linha ${c.rowNumber} excluída da aba "${c.tab}"`,
+      extractedData: c,
+    });
+
+    if (settings.isGroupRepliesEnabled()) {
+      try {
+        let reply = `🚫 *AGENDAMENTO CANCELADO COM SUCESSO!* 🗑️\n\n`;
+        reply += `🚗 *Veículo:* ${c.carro || 'N/D'}\n`;
+        if (c.chassi) reply += `🔖 *Chassi / Placa:* ${c.chassi}\n`;
+        if (c.origem || c.destino) {
+          reply += `📍 *Trajeto:* ${c.origem || '-'} ➔ ${c.destino || '-'}\n`;
+        }
+        if (c.data) reply += `📅 *Data Original:* ${c.data}\n`;
+        reply += `\n✓ Linha ${c.rowNumber} removida da aba "${c.tab}" e custos da viagem recalculados!`;
+
+        await message.reply(reply);
+        logger.success('Confirmação de cancelamento enviada no grupo do WhatsApp!');
+      } catch (replyErr) {
+        logger.warn(`Aviso ao enviar resposta de cancelamento: ${replyErr.message}`);
+      }
+    }
+
+    return { isAgendamento: false, isCancellation: true, cancelled: c };
+  } else {
+    logger.warn(`Agendamento para cancelamento não foi localizado na planilha.`);
+
+    history.recordMessage({
+      messageId: msgId,
+      timestamp: msgDate,
+      author: sender,
+      body,
+      status: 'CANCELAMENTO_NAO_ENCONTRADO',
+      reason: 'Solicitação de cancelamento recebida, mas o veículo/chassi não foi encontrado na planilha',
+      extractedData: target,
+    });
+
+    if (settings.isGroupRepliesEnabled()) {
+      try {
+        const idAlvo = target.chassi || target.placa || target.veiculo || 'informado';
+        await message.reply(`⚠️ *AVISO DE CANCELAMENTO:* Não foi encontrado nenhum agendamento ativo com o identificador *${idAlvo}* na planilha para cancelamento.`);
+      } catch (_) {}
+    }
+
+    return { isAgendamento: false, isCancellation: true, notFound: true };
+  }
+}
+
+/**
  * Processa uma mensagem recebida.
  */
 async function handleMessage(message, config, isHistorical = false) {
@@ -450,7 +531,7 @@ async function handleMessage(message, config, isHistorical = false) {
   if (!body || body.trim().length === 0) return { isAgendamento: false };
 
   // Ignora respostas geradas pelo próprio bot para evitar loop infinito
-  if (body.includes('AGENDAMENTO REGISTRADO') || body.includes('AGENDAMENTO DUPLICADO')) {
+  if (body.includes('AGENDAMENTO REGISTRADO') || body.includes('AGENDAMENTO DUPLICADO') || body.includes('AGENDAMENTO CANCELADO')) {
     return { isAgendamento: false };
   }
 
@@ -468,11 +549,17 @@ async function handleMessage(message, config, isHistorical = false) {
 
   logger.info(`[DEBUG] Mensagem recebida no grupo Agenda guincho: "${body.substring(0, 50)}..."`);
 
-  // 1. Contexto recente para IA
+  // 1. Checagem prioritária de cancelamento
+  if (isCancellationRequest(body)) {
+    logger.info(`🚫 Solicitação de cancelamento detectada: "${body.substring(0, 50)}..."`);
+    return await handleCancellation(message, body, config, msgDate, sender);
+  }
+
+  // 2. Contexto recente para IA
   const recentContext = getRecentContext();
   pushRecentMessage(sender, body);
 
-  // 1. Pré-Filtro: Se for ruído operacional (confirmação simples, aviso de guincho livre, etc.)
+  // 3. Pré-Filtro: Se for ruído operacional (confirmação simples, aviso de guincho livre, etc.)
   if (isOperationalNoise(body)) {
     history.recordMessage({
       messageId: msgId,
@@ -486,10 +573,10 @@ async function handleMessage(message, config, isHistorical = false) {
     return { isAgendamento: false };
   }
 
-  // 2. Parser Regex Rápido
+  // 4. Parser Regex Rápido
   let agendamento = parseAgendamento(body);
 
-  // 3. Fallback com Classificador Gemini AI (com contexto e data)
+  // 5. Fallback com Classificador Gemini AI (com contexto e data)
   let classification = null;
   if (!agendamento) {
     logger.info('Interpretando mensagem com Gemini AI...');
@@ -507,6 +594,12 @@ async function handleMessage(message, config, isHistorical = false) {
 
   // Se não foi identificado como agendamento
   if (!agendamento) {
+    // Caso especial: Solicitação de cancelamento classificada por IA
+    if (classification && classification.tipoMensagem === 'CANCELAMENTO') {
+      logger.warn(`[CANCELAMENTO] Solicitado cancelamento de transporte: ${classification.veiculo || classification.chassiPlaca || ''}`);
+      return await handleCancellation(message, body, config, msgDate, sender, classification);
+    }
+
     // Caso especial: Solicitação de viagem operacional para aprovação humana no painel
     if (classification && (classification.tipoMensagem === 'SOLICITACAO_VIAGEM' || classification.necessitaAprovacao === true)) {
       logger.info(`📋 Viagem operacional identificada ("${body.substring(0, 50)}..."). Enviada para Fila de Aprovação no Painel de Controle!`);
@@ -529,8 +622,6 @@ async function handleMessage(message, config, isHistorical = false) {
 
     if (classification && classification.tipoMensagem === 'ALTERACAO') {
       logger.warn(`[ALTERAÇÃO] Solicitada mudança no transporte: ${classification.veiculo || ''} (${classification.campoAlterado || ''} -> ${classification.novoValor || ''})`);
-    } else if (classification && classification.tipoMensagem === 'CANCELAMENTO') {
-      logger.warn(`[CANCELAMENTO] Solicitado cancelamento de transporte: ${classification.veiculo || classification.chassiPlaca || ''}`);
     }
 
     history.recordMessage({

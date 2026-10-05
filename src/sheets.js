@@ -640,6 +640,7 @@ function findRelatedTransports(rows, dateNorm, newOrigem, newDestino) {
         chassi: rChassi,
         origem: rOrigem,
         destino: rDestino,
+        nf: r[7] || '',
         currentQtd: parseInt(r[9]) || 1,
         currentCusto: r[8] || '',
       });
@@ -659,7 +660,21 @@ function findRelatedTransports(rows, dateNorm, newOrigem, newDestino) {
  * @returns {Promise<boolean>}    — true se inseriu, false se era duplicata
  */
 async function appendRow(spreadsheetId, rowData, msgDate = new Date()) {
-  const sheetName = await resolveSheetTab(spreadsheetId, msgDate);
+  // Se rowData[0] tiver a data do agendamento (DD/MM/YYYY), usa ela para resolver a aba correspondente
+  let targetDate = msgDate;
+  if (rowData && rowData[0]) {
+    const parts = String(rowData[0]).trim().split(/[\/\-]/);
+    if (parts.length === 3) {
+      const d = parseInt(parts[0], 10);
+      const m = parseInt(parts[1], 10) - 1;
+      let y = parseInt(parts[2], 10);
+      if (y < 100) y += 2000;
+      if (!isNaN(d) && !isNaN(m) && !isNaN(y)) {
+        targetDate = new Date(y, m, d, 12, 0, 0);
+      }
+    }
+  }
+  const sheetName = await resolveSheetTab(spreadsheetId, targetDate);
 
   // Coluna A (index 0) = DATA, Coluna D (index 3) = PLACAS/CHASSIS
   const dataFormatada = rowData[0];
@@ -738,16 +753,14 @@ async function appendRow(spreadsheetId, rowData, msgDate = new Date()) {
     }
     rows[targetRow - 1] = currentCachedRow;
 
-    // 8. Se há viagens irmãs relacionadas no mesmo dia, atualiza Col G a L nelas
+    // 8. Se há viagens irmãs relacionadas no mesmo dia, atualiza Col I a L nelas (sem tocar na Col H - NOTA FISCAL)
     if (related.length > 0) {
       const siblingUpdates = [];
       for (const sib of related) {
         const sibRow = sib.rowNumber;
         siblingUpdates.push({
-          range: `'${sheetName}'!G${sibRow}:L${sibRow}`,
+          range: `'${sheetName}'!I${sibRow}:L${sibRow}`,
           values: [[
-            'CEGONHA',
-            sib.nf || '',
             costInfo.totalTripCost,
             totalQtd,
             `=I${sibRow}/J${sibRow}`,
@@ -755,7 +768,6 @@ async function appendRow(spreadsheetId, rowData, msgDate = new Date()) {
           ]],
         });
         if (rows[sib.rowIndex]) {
-          rows[sib.rowIndex][6] = 'CEGONHA';
           rows[sib.rowIndex][8] = costInfo.totalTripCost;
           rows[sib.rowIndex][9] = totalQtd;
           rows[sib.rowIndex][10] = `=I${sibRow}/J${sibRow}`;
@@ -947,6 +959,109 @@ async function deleteRow(spreadsheetId, sheetName, rowNumber) {
   // Invalida cache de linhas da aba
   sheetRowsCache.delete(sheetName);
   logger.success(`Linha ${rowNumber} removida com sucesso da aba "${sheetName}"!`);
+}
+
+/**
+ * Localiza e remove um agendamento na planilha (aba atual ou abas recentes)
+ * por Chassi, Placa ou Veículo/Data. Após a exclusão, recalcula automaticamente
+ * os agrupamentos e custos de viagem das demais linhas do dia.
+ *
+ * @param {string} spreadsheetId
+ * @param {{ chassi?: string, placa?: string, veiculo?: string, data?: string }} target
+ * @returns {Promise<{ success: boolean, cancelled?: object, notFound?: boolean }>}
+ */
+async function findAndCancelTransport(spreadsheetId, target = {}) {
+  const meta = await getSpreadsheetMetadata(spreadsheetId);
+  const activeTab = await resolveSheetTab(spreadsheetId);
+
+  // Lista de abas candidatas: aba ativa do ciclo primeiro, depois meses ordenados
+  const candidateTabs = [activeTab];
+  for (const t of (meta.sheetTitles || [])) {
+    if (!candidateTabs.includes(t) && /^(JANEIRO|FEVEREIRO|MARCO|MARÇO|ABRIL|MAIO|JUNHO|JULHO|AGOSTO|SETEMBRO|OUTUBRO|NOVEMBRO|DEZEMBRO)\s+\d{4}$/i.test(t.trim())) {
+      candidateTabs.push(t);
+    }
+  }
+
+  const cleanChassi = (target.chassi || '').trim().toUpperCase();
+  const cleanPlaca = (target.placa || '').trim().toUpperCase();
+  const cleanVeiculo = (target.veiculo || '').trim().toUpperCase();
+  const targetDateNorm = normalizeDateStr(target.data || '');
+
+  for (const tab of candidateTabs) {
+    const rows = await getSheetRows(spreadsheetId, tab, false); // dados frescos sem cache
+    let matchedRowIndex = -1;
+    let matchedRow = null;
+
+    // Busca de baixo para cima (agendamento mais recente tem prioridade)
+    for (let i = rows.length - 1; i >= 2; i--) {
+      const r = rows[i] || [];
+      const rowDate = normalizeDateStr(r[0] || '');
+      const rowCarro = (r[2] || '').trim().toUpperCase();
+      const rowChassiPlaca = (r[3] || '').trim().toUpperCase();
+
+      if (!rowCarro && !rowChassiPlaca) continue;
+
+      // 1. Prioridade 1: Match por Chassi (mínimo 5 caracteres)
+      if (cleanChassi && cleanChassi.length >= 5 && rowChassiPlaca.includes(cleanChassi)) {
+        matchedRowIndex = i;
+        matchedRow = r;
+        break;
+      }
+
+      // 2. Prioridade 2: Match por Placa (mínimo 6 caracteres)
+      if (cleanPlaca && cleanPlaca.length >= 6 && rowChassiPlaca.includes(cleanPlaca)) {
+        matchedRowIndex = i;
+        matchedRow = r;
+        break;
+      }
+
+      // 3. Prioridade 3: Match por Veículo e Data (se Chassi/Placa não vieram)
+      if (!cleanChassi && !cleanPlaca && cleanVeiculo && cleanVeiculo.length >= 3) {
+        if (rowCarro.includes(cleanVeiculo)) {
+          if (!targetDateNorm || rowDate === targetDateNorm) {
+            matchedRowIndex = i;
+            matchedRow = r;
+            break;
+          }
+        }
+      }
+    }
+
+    if (matchedRowIndex !== -1 && matchedRow) {
+      const rowNumber = matchedRowIndex + 1; // 1-indexed na planilha
+      const cancelled = {
+        tab,
+        rowNumber,
+        data: matchedRow[0] || '',
+        depto: matchedRow[1] || '',
+        carro: matchedRow[2] || '',
+        chassi: matchedRow[3] || '',
+        origem: matchedRow[4] || '',
+        destino: matchedRow[5] || '',
+        modalidade: matchedRow[6] || '',
+        notaFiscal: matchedRow[7] || '',
+      };
+
+      logger.info(`Agendamento localizado para cancelamento na aba "${tab}", linha ${rowNumber}: ${cancelled.carro} (${cancelled.chassi})`);
+
+      // Deleta a linha fisicamente
+      await deleteRow(spreadsheetId, tab, rowNumber);
+
+      // Invalida cache de linhas da aba
+      sheetRowsCache.delete(tab);
+
+      // Recalcula agrupamentos e custos para os veículos que restaram no mesmo dia
+      try {
+        await recalculateMonthTransportCosts(spreadsheetId, tab);
+      } catch (err) {
+        logger.warn(`Aviso ao recalcular custos pós-cancelamento: ${err.message}`);
+      }
+
+      return { success: true, cancelled };
+    }
+  }
+
+  return { success: false, notFound: true };
 }
 
 /**
@@ -1319,4 +1434,5 @@ module.exports = {
   recalculateMonthTransportCosts,
   getMonthTransparencyData,
   updateRowRoute,
+  findAndCancelTransport,
 };
