@@ -10,6 +10,32 @@ const { Client, LocalAuth } = require('whatsapp-web.js');
 const Message = require('whatsapp-web.js/src/structures/Message');
 const qrcode = require('qrcode-terminal');
 const logger = require('./logger');
+
+// Patch de resiliência: absorve "Execution context was destroyed, most likely because of a navigation"
+// que ocorre quando o WhatsApp Web atualiza internamente durante a inicialização/carregamento da página.
+const originalInject = Client.prototype.inject;
+Client.prototype.inject = async function (...args) {
+  const maxAttempts = 6;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await originalInject.apply(this, args);
+    } catch (err) {
+      const msg = err && err.message ? err.message : String(err);
+      const isNavError =
+        msg.includes('Execution context was destroyed') ||
+        msg.includes('navigating') ||
+        msg.includes('navigation');
+      if (isNavError && attempt < maxAttempts) {
+        logger.warn(
+          `WhatsApp Web em atualização/navegação interna... aguardando novo contexto (tentativa ${attempt}/${maxAttempts})...`
+        );
+        await new Promise((r) => setTimeout(r, 2000));
+        continue;
+      }
+      throw err;
+    }
+  }
+};
 const {
   parseAgendamento,
   toSheetRow,
@@ -94,6 +120,20 @@ function cleanupStaleBrowserSession(customAuthDir) {
       } catch (_) {}
     }
   }
+
+  // 3. Remove cache local que possa conter versões HTML desatualizadas do WhatsApp
+  const cacheCandidates = [
+    path.resolve(baseAuth, '../.wwebjs_cache'),
+    path.resolve(process.cwd(), '.wwebjs_cache'),
+  ];
+  for (const c of cacheCandidates) {
+    if (fs.existsSync(c)) {
+      try {
+        fs.rmSync(c, { recursive: true, force: true });
+        logger.debug('Cache local do WhatsApp (.wwebjs_cache) limpo com sucesso.');
+      } catch (_) {}
+    }
+  }
 }
 
 /**
@@ -113,6 +153,8 @@ function createClient(config) {
 
   const client = new Client({
     authStrategy: new LocalAuth({ dataPath: authDir }),
+    webVersionCache: { type: 'none' },
+    authTimeoutMs: 60000,
     puppeteer: {
       headless: true,
       args: [

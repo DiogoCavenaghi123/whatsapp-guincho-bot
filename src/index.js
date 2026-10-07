@@ -133,7 +133,7 @@ async function main() {
   let client = createClient({ groupId, spreadsheetId });
   let initialized = false;
   let attempts = 0;
-  const maxAttempts = 3;
+  const maxAttempts = 5;
 
   while (!initialized && attempts < maxAttempts) {
     attempts++;
@@ -141,19 +141,22 @@ async function main() {
       if (attempts > 1) {
         logger.info(`Tentativa ${attempts} de ${maxAttempts} para conectar ao WhatsApp...`);
         cleanupStaleBrowserSession();
-        await new Promise((r) => setTimeout(r, 2500));
+        await new Promise((r) => setTimeout(r, 3000));
         client = createClient({ groupId, spreadsheetId });
       }
       await client.initialize();
       initialized = true;
     } catch (err) {
       logger.warn(`Falha na inicialização do WhatsApp (tentativa ${attempts}/${maxAttempts}): ${err.message}`);
+      try {
+        if (client) await client.destroy();
+      } catch (_) {}
       if (attempts >= maxAttempts) {
         throw err;
       }
       logger.info('Liberando travas do navegador e tentando reconectar...');
       cleanupStaleBrowserSession();
-      await new Promise((r) => setTimeout(r, 3000));
+      await new Promise((r) => setTimeout(r, 4000));
     }
   }
 
