@@ -155,8 +155,14 @@ const btnOpenClearTermModal = document.getElementById('btnOpenClearTermModal');
 const cleanConfirmModal = document.getElementById('cleanConfirmModal');
 const btnCloseCleanModal = document.getElementById('btnCloseCleanModal');
 const btnCancelCleanModal = document.getElementById('btnCancelCleanModal');
-const btnConfirmCleanModal = document.getElementById('btnConfirmCleanModal');
 const cleanModalDesc = document.getElementById('cleanModalDesc');
+
+// Recalc Modal
+const recalcModal = document.getElementById('recalcModal');
+const btnCloseRecalcModal = document.getElementById('btnCloseRecalcModal');
+const btnCancelRecalcModal = document.getElementById('btnCancelRecalcModal');
+const btnConfirmRecalcModal = document.getElementById('btnConfirmRecalcModal');
+const selectRecalcTab = document.getElementById('selectRecalcTab');
 
 // Configuration summary
 const cfgDisplayCycle = document.getElementById('cfgDisplayCycle');
@@ -1338,13 +1344,56 @@ if (btnCmdSyncSheets) {
   });
 }
 
+function openRecalcModal() {
+  if (!recalcModal) return;
+  const currentTab = (state.status && state.status.activeTab) || 'OUTUBRO 2026';
+  if (selectRecalcTab) {
+    let exists = false;
+    for (let i = 0; i < selectRecalcTab.options.length; i++) {
+      if (selectRecalcTab.options[i].value === currentTab) {
+        selectRecalcTab.selectedIndex = i;
+        exists = true;
+        break;
+      }
+    }
+    if (!exists) {
+      const opt = document.createElement('option');
+      opt.value = currentTab;
+      opt.textContent = `${currentTab} (Ciclo Atual)`;
+      selectRecalcTab.insertBefore(opt, selectRecalcTab.firstChild);
+      selectRecalcTab.selectedIndex = 0;
+    }
+  }
+  recalcModal.classList.add('active');
+  recalcModal.setAttribute('aria-hidden', 'false');
+}
+
+function closeRecalcModal() {
+  if (!recalcModal) return;
+  recalcModal.classList.remove('active');
+  recalcModal.setAttribute('aria-hidden', 'true');
+}
+
 if (btnCmdRecalcCosts) {
-  btnCmdRecalcCosts.addEventListener('click', async () => {
-    const defaultTab = 'SETEMBRO 2026';
-    const targetTab = prompt('Informe a aba da planilha para recalcular custos e veículos (ex: SETEMBRO 2026 ou OUTUBRO 2026):', defaultTab);
+  btnCmdRecalcCosts.addEventListener('click', openRecalcModal);
+}
+if (btnCloseRecalcModal) btnCloseRecalcModal.addEventListener('click', closeRecalcModal);
+if (btnCancelRecalcModal) btnCancelRecalcModal.addEventListener('click', closeRecalcModal);
+if (recalcModal) {
+  recalcModal.addEventListener('click', (e) => {
+    if (e.target === recalcModal) closeRecalcModal();
+  });
+}
+
+if (btnConfirmRecalcModal) {
+  btnConfirmRecalcModal.addEventListener('click', async () => {
+    const targetTab = selectRecalcTab ? selectRecalcTab.value : 'OUTUBRO 2026';
     if (!targetTab) return;
 
-    btnCmdRecalcCosts.disabled = true;
+    btnConfirmRecalcModal.disabled = true;
+    const origHtml = btnConfirmRecalcModal.innerHTML;
+    btnConfirmRecalcModal.innerHTML = '🔄 Recalculando...';
+
     showToast(`🔄 Recalculando custos e agrupamentos na aba "${targetTab}"...`, 'info');
     try {
       const res = await fetch('/api/recalculate-month', {
@@ -1355,14 +1404,19 @@ if (btnCmdRecalcCosts) {
       const data = await res.json();
       if (data.success) {
         showToast(`🟢 ${data.message}`, 'success');
+        closeRecalcModal();
         fetchStatus();
+        if (state.activeTab === 'transparency') {
+          fetchTransparency();
+        }
       } else {
         showToast(data.message || 'Erro ao recalcular custos.', 'error');
       }
     } catch (err) {
       showToast('Falha na comunicação: ' + err.message, 'error');
     } finally {
-      btnCmdRecalcCosts.disabled = false;
+      btnConfirmRecalcModal.disabled = false;
+      btnConfirmRecalcModal.innerHTML = origHtml;
     }
   });
 }

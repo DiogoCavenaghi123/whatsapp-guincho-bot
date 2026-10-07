@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=2.6">
+  <link rel="stylesheet" href="style.css?v=2.7">
 </head>
 <body>
   <div class="app-layout" id="appLayout">
@@ -812,19 +812,17 @@
                 </div>
               </div>
 
-              <div class="btn-row" style="margin-top: 14px;">
               <div class="btn-row" style="margin-top: 14px; display: flex; gap: 8px; flex-wrap: wrap;">
                 <button class="btn btn-outline" id="btnCmdSyncSheets">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-svg"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>
                   Testar conexão
                 </button>
                 <button class="btn btn-outline" id="btnCmdRecalcCosts" title="Recalcular custos unitários e quantidade de veículos nas viagens da planilha">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-svg"><circle cx="12" cy="12" r="10"/><path d="m16 10-4 4-2-2"/></svg>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-svg"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
                   Recalcular Valores & Veículos
                 </button>
               </div>
             </div>
-          </div>
 
           <!-- Card Manutenção do Sistema -->
           <div class="card command-card">
@@ -1312,6 +1310,52 @@
           <button class="btn btn-primary" id="btnSaveRouteModal">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-svg"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
             Salvar e Atualizar Planilha
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ======================================================== -->
+    <!-- MODAL: RECALCULAR VALORES E VEÍCULOS                     -->
+    <!-- ======================================================== -->
+    <div id="recalcModal" class="modal-backdrop" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-md">
+        <div class="modal-header">
+          <div class="modal-title-group">
+            <h3 class="modal-heading">🧮 Recalcular Valores & Veículos</h3>
+            <span class="modal-subheading">Reanalisa agrupamentos de viagens e atualiza custos unitários</span>
+          </div>
+          <button class="modal-close-btn" id="btnCloseRecalcModal" aria-label="Fechar modal">&times;</button>
+        </div>
+        <div class="modal-body" style="display: flex; flex-direction: column; gap: 14px;">
+          <p style="color: var(--text-secondary); line-height: 1.5; margin: 0; font-size: 0.875rem;">
+            O sistema irá recalcular todas as viagens da aba selecionada, agrupando veículos da mesma rota e data para aplicar o rateio oficial de custos na planilha Google Sheets.
+          </p>
+
+          <div class="form-group" style="margin: 0;">
+            <label for="selectRecalcTab" class="form-label" style="font-weight: 600; margin-bottom: 6px;">
+              📑 Aba da Planilha a Recalcular:
+            </label>
+            <select id="selectRecalcTab" class="form-control" style="font-size: 0.9rem; font-weight: 600; padding: 10px 14px;">
+              <option value="OUTUBRO 2026" selected>OUTUBRO 2026 (Ciclo Atual)</option>
+              <option value="SETEMBRO 2026">SETEMBRO 2026</option>
+              <option value="AGOSTO 2026">AGOSTO 2026</option>
+            </select>
+          </div>
+
+          <div class="security-banner">
+            <div class="security-banner-icon">💡</div>
+            <div>
+              <strong>Como funciona o recálculo?</strong>
+              <p>Veículos para o mesmo destino no mesmo dia são agrupados (ex: 2 carros dividem o frete). A quantidade de veículos (Col J) e os custos (Cols I e K) são recalculados com precisão matemática.</p>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" id="btnCancelRecalcModal">Cancelar</button>
+          <button class="btn btn-primary" id="btnConfirmRecalcModal">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-svg"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+            Recalcular Agora
           </button>
         </div>
       </div>

@@ -346,11 +346,12 @@ const server = http.createServer(async (req, res) => {
           const credsPath = getCredentialsPath();
           await sheets.init(credsPath);
 
-          let targetTab = 'SETEMBRO 2026';
+          const cycleInfo = sheets.getTargetMonthInfo ? sheets.getTargetMonthInfo() : null;
+          let targetTab = (cycleInfo && cycleInfo.expectedTabName) || 'OUTUBRO 2026';
           if (body) {
             try {
               const parsed = JSON.parse(body);
-              if (parsed.tab) targetTab = parsed.tab;
+              if (parsed.tab) targetTab = String(parsed.tab).trim();
             } catch (_) {}
           }
 
